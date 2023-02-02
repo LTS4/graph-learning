@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta:__legacy__"
+
+[tool.pylint.master]
+docstring-min-length = 5
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.basic]
+good-names = ['f', 'N', 'n', 'i', 'j', 'k', 'df', 'ax', 'ex', 'lr', 'Run', '_']
+good-names-rgxs = ['x(\d*|_[\w\d]*)', 'X(\d*|_[\w\d]*)', 'y(\d*|_[\w\d]*)']
+no-docstring-rgx = '^_|^fit$'
+
+
+[tool.pylint.typecheck]
+# List of members which are set dynamically and missed by Pylint inference
+# system, and so shouldn't trigger E1101 when accessed.
+generated-members = ['numpy.*', 'scipy.*', 'sklearn.*', 'torch.*']
+
+[tool.pylint.similarities]
+min-similarity-lines = 3
+ignore-imports = true
+ignore-signatures = true
+
+[tool.pylint.design]
+max-attributes = 10
+max-args = 8
+
+[tool.pylint.message_control]
+disable = [
+    "no-else-break",
+    "no-else-continue",
+    "no-else-raise",
+    "no-else-return",
+]
+
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+extend_skip_glob = ["env/*"]
