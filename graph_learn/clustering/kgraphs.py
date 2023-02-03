@@ -10,7 +10,7 @@ from scipy.special import softmax
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_random_state
 
-from graph_learn.clustering.utils import init_centers
+from graph_learn.clustering.utils import init_labels
 from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
 
 
@@ -52,7 +52,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
         self.random_state = check_random_state(self.random_state)
 
-        self.labels_ = init_centers(
+        self.labels_ = init_labels(
             x,
             self.n_clusters,
             init_params=self.init_params,
