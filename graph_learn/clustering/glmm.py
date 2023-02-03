@@ -4,10 +4,11 @@
 from typing import Optional
 
 import numpy as np
-from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial.distance import pdist
 from sklearn.mixture._base import BaseMixture
+
+from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
 
 
 def _sample_laplacian(n_nodes: int, random_state: np.random.Generator):
@@ -132,9 +133,7 @@ class GLMM(BaseMixture):
             self.weights_,
             self.means_,
             self.laplacians_,
-        ) = _estimate_gauss_laplacian_parameters(
-            x, np.exp(log_resp), self.norm_par, self.delta
-        )
+        ) = _estimate_gauss_laplacian_parameters(x, np.exp(log_resp), self.norm_par, self.delta)
         self.weights_ /= self.weights_.sum()
 
     def _estimate_log_prob(self, x: ArrayLike) -> NDArray[np.float64]:
