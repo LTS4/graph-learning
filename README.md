@@ -5,6 +5,15 @@ Collection of models for learning networks from signals.
 
 Clustering methods follow the [sklearn](https://scikit-learn.org/stable/) API.
 
+## Installation
+
+Clone the git repository and install with pip:
+```
+git clone https://github.com/LTS4/graph-learning.git
+cd graph-learning
+pip install .
+```
+
 ## References
 
 **Smooth learning**
