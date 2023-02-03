@@ -3,6 +3,8 @@ Graph learning
 
 Collection of models for learning networks from signals.
 
+Clustering methods follow the [sklearn](https://scikit-learn.org/stable/) API.
+
 ## References
 
 **Smooth learning**
