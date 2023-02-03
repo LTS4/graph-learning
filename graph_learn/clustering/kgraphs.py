@@ -17,6 +17,22 @@ from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
 class KGraphs(BaseEstimator, ClusterMixin):
     """K-Graphs clustering algorithm from [araghiGraphsAlgorithmGraph2019]_
 
+    Args:
+        n_clusters (int, optional): Number of clusters. Defaults to 1.
+        max_iter (int, optional): Maximum EM steps. Defaults to 100.
+        n_init (int, optional): Number of separate initalization. Defaults to 1.
+        init_params (str, optional): Label initialization method. Defaults to "kmeans".
+        norm_par (float, optional): Graph learning parameter. Defaults to 1.5.
+        delta (float, optional): _description_. Defaults to 2.
+        random_state (Optional[RandomState], optional): _description_. Defaults to None.
+
+    Parameters:
+        labels_ (NDArray[np.int_]): Cluster assignments
+        laplacians_ (NDArray[np.float_]): Cluster laplacians
+        converged_ (bool): Wheter assignment converged
+        score_ (float): Total smoothness
+
+
     .. [araghiGraphsAlgorithmGraph2019] H. Araghi, M. Sabbaqi, and M.
         Babaie-Zadeh, “K-Graphs: An Algorithm for Graph Signal Clustering and
         Multiple Graph Learning,” IEEE Signal Processing Letters, vol. 26, no.
