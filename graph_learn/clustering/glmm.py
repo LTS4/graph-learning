@@ -51,6 +51,33 @@ def _estimate_gauss_laplacian_parameters(
 class GLMM(BaseMixture):
     """Graph Laplacian Mixture model from [mareticGraphLaplacianMixture2020]_
 
+    Args:
+        n_components (int, optional): Number of components. Defaults to 1.
+        tol (float, optional): EM convergence tolerance. Defaults to 1e-3.
+        reg_covar (float, optional): Covariance regularization. Defaults to 1e-6.
+        max_iter (int, optional): Max EM iterations. Defaults to 100.
+        n_init (int, optional): Number of random initializations. Defaults to 1.
+        init_params (str, optional): Label initialization method. Defaults to "kmeans".
+        regul (float, optional): GLMM regularization. Defaults to 0.15.
+        norm_par (float, optional): Graph learning parameter. Defaults to 1.5.
+        delta (float, optional): Graph leraning param. Defaults to 2.
+        laplacian_init (Optional[float  |  str], optional): Method for laplacian initialization. Defaults to None.
+            Options are:
+            - float: Initialize as fully connected with weights eaual to arg value
+            - 'random': Edge weights are sampled as uniform ranodm variables and Laplacians are extracted.
+        random_state (_type_, optional): Random state. Defaults to None.
+        warm_start (bool, optional): Wheter to use warm start in EM. Defaults to False.
+        verbose (int, optional): Verobsity level. Defaults to 0.
+        verbose_interval (int, optional): Verbosity interval. Defaults to 10.
+
+    Parameters:
+        n_nodes_ (int): Number of nodes in the graph
+        weights_ (NDArray[np.float64]): GLMM class weights
+        means_ (NDArray[np.float64]): Components mean
+        laplacians_ (NDArray[np.float64]): COmponents Laplacians
+        labels_ (NDArray[np.int64]): Input assignments based on MAP
+
+
     .. [mareticGraphLaplacianMixture2020] H. P. Maretic and P. Frossard, “Graph
         Laplacian mixture model,” arXiv:1810.10053 [cs, stat], Mar. 2020,
         Available: http://arxiv.org/abs/1810.10053
