@@ -170,7 +170,7 @@ class GraphComponents(BaseEstimator):
         """
 
         def lin_op(delta):
-            return np.matmul(laplacians.transpose(1, 2, 0), delta).transpose(2, 0, 1)
+            return np.einsum("knm,kt->tnm", laplacians, delta)
 
         def dual_op(dvar):
             return np.einsum("knm,tnm->kt", laplacians, dvar)
@@ -206,10 +206,10 @@ class GraphComponents(BaseEstimator):
 
         def lin_op(weights):
             laplacians = laplacian_squareform(weights)
-            return np.matmul(laplacians.transpose(1, 2, 0), self.activations_).transpose(2, 0, 1)
+            return np.einsum("knm,kt->tnm", laplacians, self.activations_)
 
         def dual_op(dvar):
-            dvar = np.matmul(dvar.transpose(1, 2, 0), self.activations_.T).transpose(2, 0, 1)
+            dvar = np.einsum("tnm,tk->knm", dvar, self.activations_)
             return np.stack([laplacian_squareform_dual(laplacian) for laplacian in dvar])
 
         def prox_g(weights, tau):
