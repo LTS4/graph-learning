@@ -6,7 +6,7 @@ from typing import Callable
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.spatial.distance import squareform
+from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 
@@ -116,10 +116,8 @@ class GraphComponents(BaseEstimator):
         max_iter: int = 100,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-5,
-        m_tau: float = None,
         m_sigma: float = None,
         m_rho: float = None,
-        e_tau: float = None,
         e_sigma: float = None,
         e_rho: float = None,
         random_state: RandomState = None,
@@ -132,10 +130,8 @@ class GraphComponents(BaseEstimator):
         self.max_iter = max_iter
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
-        self.m_tau = m_tau
         self.m_sigma = m_sigma
         self.m_rho = m_rho
-        self.e_tau = e_tau
         self.e_sigma = e_sigma
         self.e_rho = e_rho
 
@@ -143,6 +139,8 @@ class GraphComponents(BaseEstimator):
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
+
+        self._discretize = False
 
     def _initialize(self, x: NDArray):
         n_nodes, n_samples = x.shape
@@ -185,9 +183,9 @@ class GraphComponents(BaseEstimator):
         self.activations_, _ = primal_dual_splitting(
             self.activations_,
             lin_op(self.activations_),
-            self.e_tau,
-            self.e_sigma,
-            self.e_rho,
+            tau=self.e_sigma,
+            sigma=self.e_sigma,
+            rho=self.e_rho,
             lin_op=lin_op,
             dual_op=dual_op,
             prox_g=prox_g,
@@ -219,7 +217,7 @@ class GraphComponents(BaseEstimator):
         self.weights_, _ = primal_dual_splitting(
             self.weights_,
             lin_op(self.weights_),
-            tau=self.m_tau,
+            tau=self.m_sigma,
             sigma=self.m_sigma,
             rho=self.m_rho,
             lin_op=lin_op,
@@ -228,6 +226,20 @@ class GraphComponents(BaseEstimator):
             prox_h=prox_gdet,
             max_iter=self.max_iter_pds,
             tol=self.tol_pds,
+        )
+
+    def _component_pdist(self, x):
+        if self._discretize:
+            # This discretize the activations
+            return np.stack([pdist(x[mask > 0.5].T) ** 2 for mask in self.activations_])
+
+        # This works with continuous activations
+        pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
+        np.stack(
+            [
+                squareform(kdiff)
+                for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
+            ]
         )
 
     def fit(self, x: NDArray[np.float_], _y=None) -> GraphComponents:
