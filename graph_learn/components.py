@@ -6,6 +6,7 @@ from typing import Callable
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
+from scipy.sparse.linalg import LinearOperator
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
@@ -16,8 +17,7 @@ def primal_dual_splitting(
     tau: float,
     sigma: float,
     rho: float,
-    lin_op: Callable[[NDArray], NDArray],
-    dual_op: Callable[[NDArray], NDArray],
+    lin_op: LinearOperator,
     prox_g: Callable[[NDArray, float], NDArray],
     prox_h: Callable[[NDArray, float], NDArray],
     max_iter: int = 100,
@@ -33,8 +33,7 @@ def primal_dual_splitting(
         tau (float): _description_
         sigma (float): _description_
         rho (float): _description_
-        lin_op (Callable[[NDArray], NDArray]): _description_
-        dual_op (Callable[[NDArray], NDArray]): _description_
+        lin_op (LinearOperator): _description_
         prox_prim (Callable[[NDArray, float], NDArray]): _description_
         prox_dual (Callable[[NDArray, float], NDArray]): _description_
         max_iter (int, optional): _description_. Defaults to 100.
@@ -44,8 +43,8 @@ def primal_dual_splitting(
         tuple[NDArray, NDArray]: _description_
     """
     for i in range(max_iter):
-        p_var1 = prox_g(p_var - tau * dual_op(d_var), tau)
-        d_var1 = prox_h(d_var + sigma * lin_op(2 * p_var1 - p_var))
+        p_var1 = prox_g(p_var - tau * lin_op.rmatvec(d_var), tau)
+        d_var1 = prox_h(d_var + sigma * lin_op.matvec(2 * p_var1 - p_var))
 
         if i > 0:
             # Denominators are previous iteration ones
@@ -99,12 +98,46 @@ def laplacian_squareform(weights: NDArray[np.float]) -> NDArray[np.float_]:
 
 
 def laplacian_squareform_dual(laplacian: NDArray[np.float_]) -> NDArray[np.float_]:
+    """Dual operator of :func:`laplacian_squareform`
+
+    Args:
+        laplacian (NDArray[np.float_]): Laplacian matrix of shape (n_nodes, n_nodes)
+
+    Returns:
+        NDArray[np.float_]: Vector
+    """
     laplacian = laplacian.copy()
     np.fill_diagonal(laplacian, 0)
     s = np.sum(laplacian, axis=1)
     L1 = 2 * laplacian + s[:, np.newaxis] + s[np.newaxis, :]
     # np.fill_diagonal(L1, 0)
     return -squareform(L1, checks=False)
+
+
+class _ExpectationLinOp:
+    def __init__(self, laplacians: NDArray[np.float_]):
+        self.laplacians = laplacians
+
+    def matvec(self, x):
+        return np.einsum("knm,kt->tnm", self.laplacians, x.reshape())
+
+    def rmatvec(self, x):
+        return np.einsum("knm,tnm->kt", self.laplacians, x)
+
+
+class _MaximizationLinOp:
+    def __init__(self, activations: NDArray[np.float_]):
+        super().__init__(dtype=float, shape=activations.shape)
+
+        self.activations = activations
+
+    def matvec(self, x):
+        laplacians = laplacian_squareform(x)
+        return np.einsum("knm,kt->tnm", laplacians, self.activations)
+
+    def rmatvec(self, x):
+        x = np.einsum("tnm,tk->knm", x, self.activations)
+        return np.stack([laplacian_squareform_dual(laplacian) for laplacian in x])
 
 
 class GraphComponents(BaseEstimator):
@@ -167,12 +200,7 @@ class GraphComponents(BaseEstimator):
                 (n_components, n_nodes, n_nodes)
         """
 
-        def lin_op(delta):
-            return np.einsum("knm,kt->tnm", laplacians, delta)
-
-        def dual_op(dvar):
-            return np.einsum("knm,tnm->kt", laplacians, dvar)
-
+        lin_op = _ExpectationLinOp(laplacians)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
 
         def prox_g(delta, tau):
@@ -182,12 +210,11 @@ class GraphComponents(BaseEstimator):
 
         self.activations_, _ = primal_dual_splitting(
             self.activations_,
-            lin_op(self.activations_),
+            lin_op.matvec(self.activations_),
             tau=self.e_sigma,
             sigma=self.e_sigma,
             rho=self.e_rho,
             lin_op=lin_op,
-            dual_op=dual_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
             max_iter=self.max_iter_pds,
@@ -201,14 +228,7 @@ class GraphComponents(BaseEstimator):
             pdists (NDArray[np.float_]): pairwise distances of sample-vectors,
                 shape (n_edges, n_components)
         """
-
-        def lin_op(weights):
-            laplacians = laplacian_squareform(weights)
-            return np.einsum("knm,kt->tnm", laplacians, self.activations_)
-
-        def dual_op(dvar):
-            dvar = np.einsum("tnm,tk->knm", dvar, self.activations_)
-            return np.stack([laplacian_squareform_dual(laplacian) for laplacian in dvar])
+        lin_op = _MaximizationLinOp(self.activations_)
 
         def prox_g(weights, tau):
             out = weights - tau * (pdists / 2 + self.alpha)
@@ -216,12 +236,11 @@ class GraphComponents(BaseEstimator):
 
         self.weights_, _ = primal_dual_splitting(
             self.weights_,
-            lin_op(self.weights_),
+            lin_op.matvec(self.weights_),
             tau=self.m_sigma,
             sigma=self.m_sigma,
             rho=self.m_rho,
             lin_op=lin_op,
-            dual_op=dual_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
             max_iter=self.max_iter_pds,
