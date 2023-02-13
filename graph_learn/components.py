@@ -45,7 +45,7 @@ def primal_dual_splitting(
     """
     for i in range(max_iter):
         p_var1 = prox_g(p_var - tau * lin_op.rmatvec(d_var), tau)
-        d_var1 = prox_h(d_var + sigma * lin_op.matvec(2 * p_var1 - p_var))
+        d_var1 = prox_h(d_var + sigma * lin_op.matvec(2 * p_var1 - p_var), sigma)
 
         if i > 0:
             # Denominators are previous iteration ones
@@ -135,12 +135,10 @@ class _ExpectationLinOp:
 
 class _MaximizationLinOp:
     def __init__(self, activations: NDArray[np.float_], n_nodes: int):
-        super().__init__(dtype=float, shape=activations.shape)
-
         self.activations = activations
         self.n_nodes = n_nodes
 
-        self._norm = None
+        self._norm: float = None
 
     def matvec(self, x):
         laplacians = laplacian_squareform(x)
@@ -150,7 +148,7 @@ class _MaximizationLinOp:
         return np.einsum("knm,kt->tnm", laplacians, self.activations)
 
     def rmatvec(self, x):
-        x = np.einsum("tnm,tk->knm", x, self.activations)
+        x = np.einsum("tnm,kt->knm", x, self.activations)
         return np.stack([laplacian_squareform_dual(laplacian) for laplacian in x])
 
     def norm(self):
@@ -193,20 +191,14 @@ class GraphComponents(BaseEstimator):
         self._discretize = False
 
     def _initialize(self, x: NDArray):
-        self.n_nodes_, n_samples = x.shape
+        n_samples, self.n_nodes_ = x.shape
 
         self.activations_ = self.random_state.rand(self.n_components, n_samples)
         self.weights_ = self.random_state.rand(
             self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
         )
 
-    def _e_step(
-        self,
-        # activations: NDArray[np.float_],
-        # dual_var: NDArray[np.float_],
-        x: NDArray[np.float_],
-        laplacians: NDArray[np.float_],
-    ):
+    def _e_step(self, x: NDArray[np.float_], laplacians: NDArray[np.float_]):
         r"""Expectation step: compute activations
 
         Args:
@@ -268,14 +260,22 @@ class GraphComponents(BaseEstimator):
             tol=self.tol_pds,
         )
 
-    def _component_pdist(self, x):
+    def _component_pdist(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+        """Compute pairwise distances on each componend, based on activations
+
+        Args:
+            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+
+        Returns:
+            NDArray[np.float_]: Pairwise node distances of shape (n_components, n_nodes, n_nodes)
+        """
         if self._discretize:
             # This discretize the activations
             return np.stack([pdist(x[mask > 0.5].T) ** 2 for mask in self.activations_])
 
         # This works with continuous activations
         pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
-        np.stack(
+        return np.stack(
             [
                 squareform(kdiff)
                 for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
@@ -283,4 +283,11 @@ class GraphComponents(BaseEstimator):
         )
 
     def fit(self, x: NDArray[np.float_], _y=None) -> GraphComponents:
-        raise NotImplementedError
+        self._initialize(x)
+
+        for _it in range(self.max_iter):
+            self._m_step(self._component_pdist(x))
+
+            self._e_step(x, laplacian_squareform(x))
+
+        return self
