@@ -8,15 +8,8 @@ from numpy.typing import ArrayLike, NDArray
 from scipy.spatial.distance import pdist
 from sklearn.mixture._base import BaseMixture
 
+from graph_learn.clustering.utils import sample_laplacian
 from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
-
-
-def _sample_laplacian(n_nodes: int, random_state: np.random.Generator):
-    out = random_state.uniform(size=(n_nodes, n_nodes))
-    np.fill_diagonal(out, 0)
-    out += out.T
-    np.fill_diagonal(out, -out.sum(axis=-1))
-    return -out
 
 
 def _estimate_gauss_laplacian_parameters(
@@ -148,7 +141,7 @@ class GLMM(BaseMixture):
         elif self.laplacian_init == "random":
             self.laplacians_ = np.stack(
                 [
-                    _sample_laplacian(self.n_nodes_, self.random_state)
+                    sample_laplacian(self.n_nodes_, self.random_state)
                     for _ in range(self.n_components)
                 ]
             )
