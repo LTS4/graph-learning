@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Callable
 
 import numpy as np
+from numpy.linalg import eigh
 from numpy.random import RandomState
 from numpy.typing import NDArray
 from scipy.linalg import svdvals
@@ -67,7 +68,7 @@ def primal_dual_splitting(
     return p_var, d_var
 
 
-def prox_gdet(dvar: NDArray[np.float_], sigma: float, eps=0) -> NDArray[np.float_]:
+def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
     """Proximal operator of the generalized determinant
 
     Args:
@@ -78,9 +79,14 @@ def prox_gdet(dvar: NDArray[np.float_], sigma: float, eps=0) -> NDArray[np.float
         NDArray[np.float_]: Proximal point
     """
     # Regularize dvar
-    dvar += (eps * np.eye(dvar.shape[-1]))[np.newaxis, ...]
+    # dvar += (eps * np.eye(dvar.shape[-1]))[np.newaxis, ...]
     # I have to identify the Laplacians which are unique, to speed-up computations
-    eigvals, eigvecs = np.linalg.eigh(dvar)
+    eigvals, eigvecs = eigh(dvar)
+
+    # Input shall be SPD, so negative values come from numerical erros
+    eigvals[eigvals < 0] = 0
+
+    # Proximal step
     eigvals = (eigvals + np.sqrt(eigvals + 4 * sigma)) / 2
     return np.stack(
         [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, eigvecs)]
@@ -290,6 +296,6 @@ class GraphComponents(BaseEstimator):
         for _it in range(self.max_iter):
             self._m_step(self._component_pdist(x))
 
-            self._e_step(x, laplacian_squareform(x))
+            self._e_step(x, laplacian_squareform(self.weights_))
 
         return self
