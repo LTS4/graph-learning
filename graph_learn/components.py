@@ -67,7 +67,7 @@ def primal_dual_splitting(
     return p_var, d_var
 
 
-def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
+def prox_gdet(dvar: NDArray[np.float_], sigma: float, eps=0) -> NDArray[np.float_]:
     """Proximal operator of the generalized determinant
 
     Args:
@@ -77,6 +77,8 @@ def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
     Returns:
         NDArray[np.float_]: Proximal point
     """
+    # Regularize dvar
+    dvar += (eps * np.eye(dvar.shape[-1]))[np.newaxis, ...]
     # I have to identify the Laplacians which are unique, to speed-up computations
     eigvals, eigvecs = np.linalg.eigh(dvar)
     eigvals = (eigvals + np.sqrt(eigvals + 4 * sigma)) / 2
@@ -121,7 +123,7 @@ class _ExpectationLinOp:
         self._norm: float = None
 
     def matvec(self, x):
-        return np.einsum("knm,kt->tnm", self.laplacians, x.reshape())
+        return np.einsum("knm,kt->tnm", self.laplacians, x)
 
     def rmatvec(self, x):
         return np.einsum("knm,tnm->kt", self.laplacians, x)
@@ -241,7 +243,7 @@ class GraphComponents(BaseEstimator):
                 shape (n_edges, n_components)
         """
         lin_op = _MaximizationLinOp(self.activations_, self.n_nodes_)
-        tau = lin_op.norm()
+        tau = 1 / lin_op.norm()
 
         def prox_g(weights, tau):
             out = weights - tau * (pdists / 2 + self.alpha)
