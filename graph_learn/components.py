@@ -6,6 +6,7 @@ from typing import Callable
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
+from scipy.linalg import svdvals
 from scipy.sparse.linalg import LinearOperator
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
@@ -117,6 +118,7 @@ def laplacian_squareform_dual(laplacian: NDArray[np.float_]) -> NDArray[np.float
 class _ExpectationLinOp:
     def __init__(self, laplacians: NDArray[np.float_]):
         self.laplacians = laplacians
+        self._norm: float = None
 
     def matvec(self, x):
         return np.einsum("knm,kt->tnm", self.laplacians, x.reshape())
@@ -124,20 +126,38 @@ class _ExpectationLinOp:
     def rmatvec(self, x):
         return np.einsum("knm,tnm->kt", self.laplacians, x)
 
+    def norm(self) -> float:
+        if self._norm is None:
+            self._norm = svdvals(self.laplacians.reshape(self.laplacians.shape[0], -1))[0]
+
+        return self._norm
+
 
 class _MaximizationLinOp:
-    def __init__(self, activations: NDArray[np.float_]):
+    def __init__(self, activations: NDArray[np.float_], n_nodes: int):
         super().__init__(dtype=float, shape=activations.shape)
 
         self.activations = activations
+        self.n_nodes = n_nodes
+
+        self._norm = None
 
     def matvec(self, x):
         laplacians = laplacian_squareform(x)
+        if laplacians.shape[-1] != self.n_nodes:
+            raise ValueError("Invalid number of nodes")
+
         return np.einsum("knm,kt->tnm", laplacians, self.activations)
 
     def rmatvec(self, x):
         x = np.einsum("tnm,tk->knm", x, self.activations)
         return np.stack([laplacian_squareform_dual(laplacian) for laplacian in x])
+
+    def norm(self):
+        if self._norm is None:
+            self._norm = np.sqrt(2 * self.n_nodes) * svdvals(self.activations)[0]
+
+        return self._norm
 
 
 class GraphComponents(BaseEstimator):
@@ -148,10 +168,8 @@ class GraphComponents(BaseEstimator):
         *,
         max_iter: int = 100,
         max_iter_pds: int = 100,
-        tol_pds: float = 1e-5,
-        m_sigma: float = None,
+        tol_pds: float = 1e-3,
         m_rho: float = None,
-        e_sigma: float = None,
         e_rho: float = None,
         random_state: RandomState = None,
     ) -> None:
@@ -163,23 +181,24 @@ class GraphComponents(BaseEstimator):
         self.max_iter = max_iter
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
-        self.m_sigma = m_sigma
         self.m_rho = m_rho
-        self.e_sigma = e_sigma
         self.e_rho = e_rho
 
         self.random_state = RandomState(random_state)
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
+        self.n_nodes_: int
 
         self._discretize = False
 
     def _initialize(self, x: NDArray):
-        n_nodes, n_samples = x.shape
+        self.n_nodes_, n_samples = x.shape
 
         self.activations_ = self.random_state.rand(self.n_components, n_samples)
-        self.weights_ = self.random_state.rand(self.n_components, n_nodes * (n_nodes - 1) // 2)
+        self.weights_ = self.random_state.rand(
+            self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
+        )
 
     def _e_step(
         self,
@@ -202,6 +221,7 @@ class GraphComponents(BaseEstimator):
 
         lin_op = _ExpectationLinOp(laplacians)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
+        tau = 1.0 / lin_op.norm()
 
         def prox_g(delta, tau):
             out = delta - tau * smoothness
@@ -211,8 +231,8 @@ class GraphComponents(BaseEstimator):
         self.activations_, _ = primal_dual_splitting(
             self.activations_,
             lin_op.matvec(self.activations_),
-            tau=self.e_sigma,
-            sigma=self.e_sigma,
+            tau=tau,
+            sigma=tau,
             rho=self.e_rho,
             lin_op=lin_op,
             prox_g=prox_g,
@@ -228,7 +248,8 @@ class GraphComponents(BaseEstimator):
             pdists (NDArray[np.float_]): pairwise distances of sample-vectors,
                 shape (n_edges, n_components)
         """
-        lin_op = _MaximizationLinOp(self.activations_)
+        lin_op = _MaximizationLinOp(self.activations_, self.n_nodes_)
+        tau = lin_op.norm()
 
         def prox_g(weights, tau):
             out = weights - tau * (pdists / 2 + self.alpha)
@@ -237,8 +258,8 @@ class GraphComponents(BaseEstimator):
         self.weights_, _ = primal_dual_splitting(
             self.weights_,
             lin_op.matvec(self.weights_),
-            tau=self.m_sigma,
-            sigma=self.m_sigma,
+            tau=tau,
+            sigma=tau,
             rho=self.m_rho,
             lin_op=lin_op,
             prox_g=prox_g,
@@ -262,4 +283,4 @@ class GraphComponents(BaseEstimator):
         )
 
     def fit(self, x: NDArray[np.float_], _y=None) -> GraphComponents:
-        pass
+        raise NotImplementedError
