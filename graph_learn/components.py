@@ -51,16 +51,16 @@ def primal_dual_splitting(
         if i > 0:
             # Denominators are previous iteration ones
             rel_norm_primal = (
-                (1 - rho) * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
+                rho * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
             )
             rel_norm_dual = (
-                (1 - rho) * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
+                rho * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
             )
         else:
             rel_norm_primal = rel_norm_dual = np.inf
 
-        p_var = rho * p_var + (1 - rho) * p_var1
-        d_var = rho * d_var + (1 - rho) * d_var1
+        p_var = rho * p_var1 + (1 - rho) * p_var
+        d_var = rho * d_var1 + (1 - rho) * d_var
 
         if rel_norm_primal < tol and rel_norm_dual < tol:
             break
