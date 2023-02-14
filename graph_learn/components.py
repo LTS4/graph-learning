@@ -18,7 +18,7 @@ def primal_dual_splitting(
     d_var: NDArray[np.float_],
     tau: float,
     sigma: float,
-    rho: float,
+    momentum: float,
     lin_op: LinearOperator,
     prox_g: Callable[[NDArray, float], NDArray],
     prox_h: Callable[[NDArray, float], NDArray],
@@ -34,7 +34,7 @@ def primal_dual_splitting(
         d_var (NDArray[np.float_]): _description_
         tau (float): _description_
         sigma (float): _description_
-        rho (float): _description_
+        momentum (float): _description_
         lin_op (LinearOperator): _description_
         prox_prim (Callable[[NDArray, float], NDArray]): _description_
         prox_dual (Callable[[NDArray, float], NDArray]): _description_
@@ -51,16 +51,16 @@ def primal_dual_splitting(
         if i > 0:
             # Denominators are previous iteration ones
             rel_norm_primal = (
-                rho * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
+                momentum * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
             )
             rel_norm_dual = (
-                rho * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
+                momentum * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
             )
         else:
             rel_norm_primal = rel_norm_dual = np.inf
 
-        p_var = rho * p_var1 + (1 - rho) * p_var
-        d_var = rho * d_var1 + (1 - rho) * d_var
+        p_var = momentum * p_var1 + (1 - momentum) * p_var
+        d_var = momentum * d_var1 + (1 - momentum) * d_var
 
         if rel_norm_primal < tol and rel_norm_dual < tol:
             break
@@ -175,8 +175,10 @@ class GraphComponents(BaseEstimator):
         max_iter: int = 100,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
-        pds_rho: float = None,
+        pds_momentum: float = None,
         random_state: RandomState = None,
+        init_startegy: str = "uniform",
+        weigth_scale: float = None,
     ) -> None:
         super().__init__()
 
@@ -186,9 +188,11 @@ class GraphComponents(BaseEstimator):
         self.max_iter = max_iter
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
-        self.pds_rho = pds_rho
+        self.pds_momentum = pds_momentum
 
         self.random_state = RandomState(random_state)
+        self.init_strategy = init_startegy
+        self.weigth_scale = weigth_scale
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
@@ -199,10 +203,13 @@ class GraphComponents(BaseEstimator):
     def _initialize(self, x: NDArray):
         n_samples, self.n_nodes_ = x.shape
 
-        self.activations_ = self.random_state.rand(self.n_components, n_samples)
-        self.weights_ = self.random_state.rand(
-            self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
-        )
+        if self.init_strategy == "uniform":
+            self.activations_ = self.random_state.rand(self.n_components, n_samples)
+            self.weights_ = self.weigth_scale * self.random_state.rand(
+                self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
+            )
+        else:
+            raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
     def _e_step(self, x: NDArray[np.float_], laplacians: NDArray[np.float_]):
         r"""Expectation step: compute activations
@@ -228,10 +235,10 @@ class GraphComponents(BaseEstimator):
 
         self.activations_, _ = primal_dual_splitting(
             self.activations_,
-            lin_op.matvec(self.activations_),
+            tau * lin_op.matvec(self.activations_),
             tau=tau,
             sigma=tau,
-            rho=self.pds_rho,
+            momentum=self.pds_momentum,
             lin_op=lin_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
@@ -249,16 +256,18 @@ class GraphComponents(BaseEstimator):
         lin_op = _MaximizationLinOp(self.activations_, self.n_nodes_)
         tau = 1 / lin_op.norm()
 
+        pdist = pdists / 2 + self.alpha
+
         def prox_g(weights, tau):
-            out = weights - tau * (pdists / 2 + self.alpha)
+            out = weights - tau * pdist
             return np.where(out > 0, out, 0)
 
         self.weights_, _ = primal_dual_splitting(
             self.weights_,
-            lin_op.matvec(self.weights_),
+            tau * lin_op.matvec(self.weights_),
             tau=tau,
             sigma=tau,
-            rho=self.pds_rho,
+            momentum=self.pds_momentum,
             lin_op=lin_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
