@@ -175,8 +175,7 @@ class GraphComponents(BaseEstimator):
         max_iter: int = 100,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
-        m_rho: float = None,
-        e_rho: float = None,
+        pds_rho: float = None,
         random_state: RandomState = None,
     ) -> None:
         super().__init__()
@@ -187,8 +186,7 @@ class GraphComponents(BaseEstimator):
         self.max_iter = max_iter
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
-        self.m_rho = m_rho
-        self.e_rho = e_rho
+        self.pds_rho = pds_rho
 
         self.random_state = RandomState(random_state)
 
@@ -233,7 +231,7 @@ class GraphComponents(BaseEstimator):
             lin_op.matvec(self.activations_),
             tau=tau,
             sigma=tau,
-            rho=self.e_rho,
+            rho=self.pds_rho,
             lin_op=lin_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
@@ -260,7 +258,7 @@ class GraphComponents(BaseEstimator):
             lin_op.matvec(self.weights_),
             tau=tau,
             sigma=tau,
-            rho=self.m_rho,
+            rho=self.pds_rho,
             lin_op=lin_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
