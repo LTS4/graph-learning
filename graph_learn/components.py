@@ -46,7 +46,11 @@ def primal_dual_splitting(
     """
     for i in range(max_iter):
         p_var1 = prox_g(p_var - tau * lin_op.rmatvec(d_var), tau)
-        d_var1 = prox_h(d_var + sigma * lin_op.matvec(2 * p_var1 - p_var), sigma)
+
+        # TODO: verify wheter (2 * p_var1 - p_var) can be enforced to be positive
+        # Recall that prox_hs(x, sigma) = x - sigma * prox_h(x/sigma, 1/sigma)
+        d_var1 = d_var + sigma * lin_op.matvec(2 * p_var1 - p_var)
+        d_var1 -= sigma * prox_h(d_var1 / sigma, 1 / sigma)
 
         if i > 0:
             # Denominators are previous iteration ones
@@ -256,10 +260,10 @@ class GraphComponents(BaseEstimator):
         lin_op = _MaximizationLinOp(self.activations_, self.n_nodes_)
         tau = 1 / lin_op.norm()
 
-        pdist = pdists / 2 + self.alpha
+        pdists = pdists / 2 + self.alpha
 
         def prox_g(weights, tau):
-            out = weights - tau * pdist
+            out = weights - tau * pdists
             return np.where(out > 0, out, 0)
 
         self.weights_, _ = primal_dual_splitting(
