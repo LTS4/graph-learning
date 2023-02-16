@@ -13,6 +13,72 @@ from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 
+def _momentum_update(
+    p_var: NDArray[np.float_],
+    p_var1: NDArray[np.float_],
+    d_var: NDArray[np.float_],
+    d_var1: NDArray[np.float_],
+    momentum: float,
+    tol: int = 1e-3,
+) -> tuple[NDArray, NDArray, bool]:
+    # Denominators are previous iteration ones
+    rel_norm_primal = (
+        momentum * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
+    )
+    rel_norm_dual = (
+        momentum * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
+    )
+
+    return (
+        momentum * p_var1 + (1 - momentum) * p_var,
+        momentum * d_var1 + (1 - momentum) * d_var,
+        rel_norm_primal < tol and rel_norm_dual < tol,
+    )
+
+
+def _pds_step_primal(
+    p_var: NDArray[np.float_],
+    d_var: NDArray[np.float_],
+    tau: float,
+    sigma: float,
+    momentum: float,
+    lin_op: LinearOperator,
+    prox_g: Callable[[NDArray, float], NDArray],
+    prox_h: Callable[[NDArray, float], NDArray],
+    tol: int = 1e-3,
+) -> tuple[NDArray, NDArray, bool]:
+    p_var1 = prox_g(p_var - tau * lin_op.rmatvec(d_var), tau)
+
+    # TODO: verify wheter (2 * p_var1 - p_var) can be enforced to be positive
+    # Recall that prox_hs(x, sigma) = x - sigma * prox_h(x/sigma, 1/sigma)
+    d_var1 = d_var + sigma * lin_op.matvec(2 * p_var1 - p_var)
+    d_var1 -= sigma * prox_h(d_var1 / sigma, 1 / sigma)
+
+    return _momentum_update(
+        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, momentum=momentum, tol=tol
+    )
+
+
+def _pds_step_dual(
+    p_var: NDArray[np.float_],
+    d_var: NDArray[np.float_],
+    tau: float,
+    sigma: float,
+    momentum: float,
+    lin_op: LinearOperator,
+    prox_g: Callable[[NDArray, float], NDArray],
+    prox_h: Callable[[NDArray, float], NDArray],
+    tol: int = 1e-3,
+) -> tuple[NDArray, NDArray, bool]:
+    d_var1 = d_var - sigma * prox_h(d_var / sigma + lin_op.matvec(p_var), 1 / sigma)
+
+    p_var1 = prox_g(p_var - tau * lin_op.rmatvec(2 * d_var1 - d_var), tau)
+
+    return _momentum_update(
+        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, momentum=momentum, tol=tol
+    )
+
+
 def primal_dual_splitting(
     p_var: NDArray[np.float_],
     d_var: NDArray[np.float_],
@@ -24,6 +90,7 @@ def primal_dual_splitting(
     prox_h: Callable[[NDArray, float], NDArray],
     max_iter: int = 100,
     tol: int = 1e-3,
+    update: str = "dual",
 ) -> tuple[NDArray, NDArray]:
     r"""PDS algorithm for problems of the form
     .. math::
@@ -45,30 +112,35 @@ def primal_dual_splitting(
         tuple[NDArray, NDArray]: _description_
     """
     for i in range(max_iter):
-        p_var1 = prox_g(p_var - tau * lin_op.rmatvec(d_var), tau)
-
-        # TODO: verify wheter (2 * p_var1 - p_var) can be enforced to be positive
-        # Recall that prox_hs(x, sigma) = x - sigma * prox_h(x/sigma, 1/sigma)
-        d_var1 = d_var + sigma * lin_op.matvec(2 * p_var1 - p_var)
-        d_var1 -= sigma * prox_h(d_var1 / sigma, 1 / sigma)
-
-        if i > 0:
-            # Denominators are previous iteration ones
-            rel_norm_primal = (
-                momentum * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
+        if update == "primal":
+            p_var, d_var, converged = _pds_step_primal(
+                p_var=p_var,
+                d_var=d_var,
+                tau=tau,
+                sigma=sigma,
+                momentum=momentum,
+                lin_op=lin_op,
+                prox_g=prox_g,
+                prox_h=prox_h,
+                tol=tol,
             )
-            rel_norm_dual = (
-                momentum * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
+        elif update == "dual":
+            p_var, d_var, converged = _pds_step_dual(
+                p_var=p_var,
+                d_var=d_var,
+                tau=tau,
+                sigma=sigma,
+                momentum=momentum,
+                lin_op=lin_op,
+                prox_g=prox_g,
+                prox_h=prox_h,
+                tol=tol,
             )
         else:
-            rel_norm_primal = rel_norm_dual = np.inf
+            raise ValueError(f"Invald PDS update, got '{update}'")
 
-        p_var = momentum * p_var1 + (1 - momentum) * p_var
-        d_var = momentum * d_var1 + (1 - momentum) * d_var
-
-        if rel_norm_primal < tol and rel_norm_dual < tol:
+        if i > 0 and converged:
             break
-
     return p_var, d_var
 
 
