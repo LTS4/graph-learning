@@ -13,25 +13,25 @@ from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 
-def _momentum_update(
+def _relaxed_update(
     p_var: NDArray[np.float_],
     p_var1: NDArray[np.float_],
     d_var: NDArray[np.float_],
     d_var1: NDArray[np.float_],
-    momentum: float,
+    relaxation: float,
     tol: int = 1e-3,
 ) -> tuple[NDArray, NDArray, bool]:
     # Denominators are previous iteration ones
     rel_norm_primal = (
-        momentum * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
+        relaxation * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
     )
     rel_norm_dual = (
-        momentum * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
+        relaxation * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
     )
 
     return (
-        momentum * p_var1 + (1 - momentum) * p_var,
-        momentum * d_var1 + (1 - momentum) * d_var,
+        relaxation * p_var1 + (1 - relaxation) * p_var,
+        relaxation * d_var1 + (1 - relaxation) * d_var,
         rel_norm_primal < tol and rel_norm_dual < tol,
     )
 
@@ -41,7 +41,7 @@ def _pds_step_primal(
     d_var: NDArray[np.float_],
     tau: float,
     sigma: float,
-    momentum: float,
+    relaxation: float,
     lin_op: LinearOperator,
     prox_g: Callable[[NDArray, float], NDArray],
     prox_h: Callable[[NDArray, float], NDArray],
@@ -54,8 +54,8 @@ def _pds_step_primal(
     d_var1 = d_var + sigma * lin_op.matvec(2 * p_var1 - p_var)
     d_var1 -= sigma * prox_h(d_var1 / sigma, 1 / sigma)
 
-    return _momentum_update(
-        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, momentum=momentum, tol=tol
+    return _relaxed_update(
+        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, relaxation=relaxation, tol=tol
     )
 
 
@@ -64,7 +64,7 @@ def _pds_step_dual(
     d_var: NDArray[np.float_],
     tau: float,
     sigma: float,
-    momentum: float,
+    relaxation: float,
     lin_op: LinearOperator,
     prox_g: Callable[[NDArray, float], NDArray],
     prox_h: Callable[[NDArray, float], NDArray],
@@ -74,8 +74,8 @@ def _pds_step_dual(
 
     p_var1 = prox_g(p_var - tau * lin_op.rmatvec(2 * d_var1 - d_var), tau)
 
-    return _momentum_update(
-        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, momentum=momentum, tol=tol
+    return _relaxed_update(
+        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, relaxation=relaxation, tol=tol
     )
 
 
@@ -84,7 +84,7 @@ def primal_dual_splitting(
     d_var: NDArray[np.float_],
     tau: float,
     sigma: float,
-    momentum: float,
+    relaxation: float,
     lin_op: LinearOperator,
     prox_g: Callable[[NDArray, float], NDArray],
     prox_h: Callable[[NDArray, float], NDArray],
@@ -101,7 +101,7 @@ def primal_dual_splitting(
         d_var (NDArray[np.float_]): _description_
         tau (float): _description_
         sigma (float): _description_
-        momentum (float): _description_
+        relaxation (float): _description_
         lin_op (LinearOperator): _description_
         prox_prim (Callable[[NDArray, float], NDArray]): _description_
         prox_dual (Callable[[NDArray, float], NDArray]): _description_
@@ -118,7 +118,7 @@ def primal_dual_splitting(
                 d_var=d_var,
                 tau=tau,
                 sigma=sigma,
-                momentum=momentum,
+                relaxation=relaxation,
                 lin_op=lin_op,
                 prox_g=prox_g,
                 prox_h=prox_h,
@@ -130,7 +130,7 @@ def primal_dual_splitting(
                 d_var=d_var,
                 tau=tau,
                 sigma=sigma,
-                momentum=momentum,
+                relaxation=relaxation,
                 lin_op=lin_op,
                 prox_g=prox_g,
                 prox_h=prox_h,
@@ -251,7 +251,7 @@ class GraphComponents(BaseEstimator):
         max_iter: int = 100,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
-        pds_momentum: float = None,
+        pds_relaxation: float = None,
         random_state: RandomState = None,
         init_startegy: str = "uniform",
         weigth_scale: float = None,
@@ -264,7 +264,7 @@ class GraphComponents(BaseEstimator):
         self.max_iter = max_iter
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
-        self.pds_momentum = pds_momentum
+        self.pds_relaxation = pds_relaxation
 
         self.random_state = RandomState(random_state)
         self.init_strategy = init_startegy
@@ -314,7 +314,7 @@ class GraphComponents(BaseEstimator):
             tau * lin_op.matvec(self.activations_),
             tau=tau,
             sigma=tau,
-            momentum=self.pds_momentum,
+            relaxation=self.pds_relaxation,
             lin_op=lin_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
@@ -343,7 +343,7 @@ class GraphComponents(BaseEstimator):
             tau * lin_op.matvec(self.weights_),
             tau=tau,
             sigma=tau,
-            momentum=self.pds_momentum,
+            relaxation=self.pds_relaxation,
             lin_op=lin_op,
             prox_g=prox_g,
             prox_h=prox_gdet,
