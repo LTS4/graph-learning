@@ -154,6 +154,8 @@ def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
     Returns:
         NDArray[np.float_]: Proximal point
     """
+    # TODO: verify why this is wrong
+
     # Regularize dvar
     # dvar += (eps * np.eye(dvar.shape[-1]))[np.newaxis, ...]
     # I have to identify the Laplacians which are unique, to speed-up computations
@@ -163,7 +165,7 @@ def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
     eigvals[eigvals < 0] = 0
 
     # Proximal step
-    eigvals = (eigvals + np.sqrt(eigvals + 4 * sigma)) / 2
+    eigvals = (eigvals + np.sqrt(eigvals**2 + 4 * sigma)) / 2
     return np.stack(
         [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, eigvecs)]
     )
@@ -255,6 +257,7 @@ class GraphComponents(BaseEstimator):
         random_state: RandomState = None,
         init_startegy: str = "uniform",
         weigth_scale: float = None,
+        discretize: bool = False,
     ) -> None:
         super().__init__()
 
@@ -274,7 +277,7 @@ class GraphComponents(BaseEstimator):
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
         self.n_nodes_: int
 
-        self._discretize = False
+        self.discretize = discretize
 
     def _initialize(self, x: NDArray):
         n_samples, self.n_nodes_ = x.shape
@@ -302,7 +305,8 @@ class GraphComponents(BaseEstimator):
 
         lin_op = _ExpectationLinOp(laplacians)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
-        tau = 1.0 / lin_op.norm()
+        # TODO: Yamada&Tanaka use sctrictly smaller
+        tau = 0.9 / lin_op.norm()
 
         def prox_g(delta, tau):
             out = delta - tau * smoothness
@@ -330,7 +334,7 @@ class GraphComponents(BaseEstimator):
                 shape (n_edges, n_components)
         """
         lin_op = _MaximizationLinOp(self.activations_, self.n_nodes_)
-        tau = 1 / lin_op.norm()
+        tau = 0.9 / lin_op.norm()
 
         pdists = pdists / 2 + self.alpha
 
@@ -360,7 +364,7 @@ class GraphComponents(BaseEstimator):
         Returns:
             NDArray[np.float_]: Pairwise node distances of shape (n_components, n_nodes, n_nodes)
         """
-        if self._discretize:
+        if self.discretize:
             # This discretize the activations
             return np.stack([pdist(x[mask > 0.5].T) ** 2 for mask in self.activations_])
 
