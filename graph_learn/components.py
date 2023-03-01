@@ -256,7 +256,7 @@ class GraphComponents(BaseEstimator):
         pds_relaxation: float = None,
         random_state: RandomState = None,
         init_startegy: str = "uniform",
-        weigth_scale: float = None,
+        weight_prior=None,
         discretize: bool = False,
     ) -> None:
         super().__init__()
@@ -271,7 +271,7 @@ class GraphComponents(BaseEstimator):
 
         self.random_state = RandomState(random_state)
         self.init_strategy = init_startegy
-        self.weigth_scale = weigth_scale
+        self.weight_prior = weight_prior
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
@@ -283,10 +283,18 @@ class GraphComponents(BaseEstimator):
         n_samples, self.n_nodes_ = x.shape
 
         if self.init_strategy == "uniform":
+            self.weight_prior = self.weight_prior or 1
+
             self.activations_ = self.random_state.rand(self.n_components, n_samples)
-            self.weights_ = self.weigth_scale * self.random_state.rand(
+            self.weights_ = self.weight_prior * self.random_state.rand(
                 self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
             )
+        elif self.init_strategy == "exact":
+            if self.weight_prior is None:
+                raise ValueError("Must provide a weight prior if init_stategy is 'exact'")
+
+            self.weights_ = self.weight_prior
+            self.activations_ = self.random_state.rand(self.n_components, n_samples)
         else:
             raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
