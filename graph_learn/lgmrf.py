@@ -14,11 +14,16 @@ _LAPLACIAN_SET = [
 
 
 def nonnegative_qp_solver(
-    mat: NDArray[np.float_], vec: NDArray[np.float_], tol: float = 1e-6
+    mat: NDArray[np.float_],
+    vec: NDArray[np.float_],
+    tol: float = 1e-6,
+    max_iter=100,
 ) -> NDArray[np.float_]:
     r"""Find non-negative solution of the following quadratic form
     .. :math:
-        \frac{1}{2}\beta^\top Q \beta - \beta^\top p
+        \frac{1}{2}\beta^\top Q \beta - \beta^\top p, \quad \beta \geq 0
+
+    We solve with ADMM
 
     Args:
         mat (NDArray[np.float_]): Symmetric matrix
@@ -28,7 +33,31 @@ def nonnegative_qp_solver(
     Returns:
         NDArray[np.float_]: Solution of quadratic problem
     """
-    pass
+    lambda_ = 0.1
+    n = mat.shape[0]
+    inv = np.linalg.inv(np.eye(n) + lambda_ * mat)
+
+    x_k = z_k = u_k = np.zeros(n)
+    for it in range(max_iter):
+        x_kp = inv @ ((z_k - u_k) + lambda_ * vec)
+        z_kp = x_kp + u_k
+        z_kp[z_kp < 0] = 0
+        u_k += x_kp - z_kp
+
+        rel_change_x = (
+            np.linalg.norm(x_kp - x_k) / np.linalg.norm(x_k) if not np.allclose(x_k, 0) else np.inf
+        )
+        rel_change_z = (
+            np.linalg.norm(z_kp - z_k) / np.linalg.norm(z_k) if not np.allclose(z_k, 0) else np.inf
+        )
+
+        x_k = x_kp
+        z_k = z_kp
+
+        if it > 0 and rel_change_x < tol and rel_change_z < tol:
+            return z_k
+
+    return z_k
 
 
 class LGMRF(BaseEstimator):
