@@ -8,7 +8,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy.spatial.distance import pdist
 from sklearn.mixture._base import BaseMixture
 
-from graph_learn.clustering.utils import sample_laplacian
+from graph_learn.clustering.utils import sample_uniform_laplacian
 from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
 
 
@@ -141,7 +141,7 @@ class GLMM(BaseMixture):
         elif self.laplacian_init == "random":
             self.laplacians_ = np.stack(
                 [
-                    sample_laplacian(self.n_nodes_, self.random_state)
+                    sample_uniform_laplacian(self.n_nodes_, self.random_state)
                     for _ in range(self.n_components)
                 ]
             )

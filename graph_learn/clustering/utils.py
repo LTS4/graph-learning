@@ -48,7 +48,7 @@ def init_labels(
             raise ValueError(f"Invalid init_params: {init_params}")
 
 
-def sample_laplacian(n_nodes: int, random_state: np.random.Generator):
+def sample_uniform_laplacian(n_nodes: int, random_state: np.random.Generator):
     """Create a Laplacian matrix with uniform weights in [0,1]"""
     out = random_state.uniform(size=((n_nodes**2 - n_nodes) // 2))
     out = squareform(out)
