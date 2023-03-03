@@ -1,6 +1,9 @@
 """Model for Laplacian-constrained Gaussian Markov Random Field"""
+from typing import Callable
+
 import numpy as np
 from numpy.typing import NDArray
+from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 from graph_learn.evaluation import relative_error
@@ -66,7 +69,7 @@ class LGMRF(BaseEstimator):
         inner_tol=1e-6,
         max_cycle=20,
         regularization_type=1,
-        laplacian_set: str = "ggl",
+        laplacian_set: str = "generalized",
         adj_mask: NDArray[np.int_] = None,
     ) -> None:
         """Graph learning from Laplacian-constrained Gaussian Markov Random Field
@@ -100,6 +103,7 @@ class LGMRF(BaseEstimator):
         self.n_nodes_: int
         self.laplacian_: NDArray[np.float_]
         self.inv_laplacian_: NDArray[np.float_]
+        self.converged_: int
 
         self._h_alpha: NDArray[np.float_]
 
@@ -135,12 +139,11 @@ class LGMRF(BaseEstimator):
 
         self.inv_laplacian_ = np.diag(np.diag(x))
         self.laplacian_ = np.diag(1 / np.diag(x))
+        self.converged_ = -1
 
         return x
 
-    def fit(self, x: NDArray[np.float_], _y):
-        x = self._initialize(x)
-
+    def _ggl_fit(self, x: NDArray[np.float_]):
         indices = np.arange(self.n_nodes_)
         for cycle in range(self.max_cycle):
             l_pre = self.laplacian_
@@ -158,7 +161,7 @@ class LGMRF(BaseEstimator):
                 lapl_u_inv = self.inv_laplacian_[minus_u, minus_u] - (c_u @ c_u.T / c_uu)
 
                 # block-descent variables
-                beta = np.zeros((n - 1, 1))
+                beta = np.zeros_like(x_u)
                 ind_nz = self.adj_mask[minus_u, u] == 1  # non-zero indices
                 a_nnls = lapl_u_inv[ind_nz, ind_nz]
                 b_nnls = x_u[ind_nz] / x_uu
@@ -189,4 +192,17 @@ class LGMRF(BaseEstimator):
                 )
 
             if cycle > 4 and relative_error(l_pre, self.laplacian_) < self.prob_tol:
+
+                self.converged_ = cycle
                 break
+
+        return self
+
+    def fit(self, x: NDArray[np.float_], _y=None):
+        x = squareform(pdist(x.T))
+        x = self._initialize(x)
+
+        if self.laplacian_set in ("g", "generalized"):
+            return self._ggl_fit(x)
+        else:
+            raise NotImplementedError(f"{self.laplacian_set} is not available yet")
