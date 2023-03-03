@@ -3,7 +3,6 @@
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.spatial.distance import squareform
 from sklearn.cluster import k_means, kmeans_plusplus
 
 
@@ -46,11 +45,3 @@ def init_labels(
             return kmeans_plusplus(x, n_clusters, random_state=random_state)
         case _:
             raise ValueError(f"Invalid init_params: {init_params}")
-
-
-def sample_uniform_laplacian(n_nodes: int, random_state: np.random.Generator):
-    """Create a Laplacian matrix with uniform weights in [0,1]"""
-    out = random_state.uniform(size=((n_nodes**2 - n_nodes) // 2))
-    out = squareform(out)
-    np.fill_diagonal(out, -out.sum(axis=-1))
-    return -out
