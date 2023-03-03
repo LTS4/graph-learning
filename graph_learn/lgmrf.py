@@ -3,6 +3,8 @@ import numpy as np
 from numpy.typing import NDArray
 from sklearn.base import BaseEstimator
 
+from graph_learn.evaluation import relative_error
+
 _LAPLACIAN_SET = [
     "g",
     "generalized",
@@ -33,7 +35,7 @@ def nonnegative_qp_solver(
     Returns:
         NDArray[np.float_]: Solution of quadratic problem
     """
-    lambda_ = 0.1
+    lambda_ = 1
     n = mat.shape[0]
     inv = np.linalg.inv(np.eye(n) + lambda_ * mat)
 
@@ -44,12 +46,8 @@ def nonnegative_qp_solver(
         z_kp[z_kp < 0] = 0
         u_k += x_kp - z_kp
 
-        rel_change_x = (
-            np.linalg.norm(x_kp - x_k) / np.linalg.norm(x_k) if not np.allclose(x_k, 0) else np.inf
-        )
-        rel_change_z = (
-            np.linalg.norm(z_kp - z_k) / np.linalg.norm(z_k) if not np.allclose(z_k, 0) else np.inf
-        )
+        rel_change_x = relative_error(x_k, x_kp)
+        rel_change_z = relative_error(z_k, z_kp)
 
         x_k = x_kp
         z_k = z_kp
@@ -144,7 +142,7 @@ class LGMRF(BaseEstimator):
         x = self._initialize(x)
 
         indices = np.arange(self.n_nodes_)
-        for _cycle in range(self.max_cycle):
+        for cycle in range(self.max_cycle):
             l_pre = self.laplacian_
 
             for u in indices:
@@ -190,10 +188,5 @@ class LGMRF(BaseEstimator):
                     (inv_lapl_u * inv_lapl_u.T) / (x_uu)
                 )
 
-            if (
-                _cycle > 4
-                and np.linalg.norm(l_pre - self.laplacian_, ord="fro")
-                / np.linalg.norm(l_pre, ord="fro")
-                < self.prob_tol
-            ):
+            if cycle > 4 and relative_error(l_pre, self.laplacian_) < self.prob_tol:
                 break
