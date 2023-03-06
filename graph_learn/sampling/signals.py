@@ -18,10 +18,10 @@ def sample_lgmrf(
     """
     random_state = RandomState(random_state)
 
-    evals, evecs = np.linalg.eigh(laplacian)
-    assert np.allclose(evals[evals < 0], 0)
-    evals[evals < 0] = 0
+    n_nodes, *_ = laplacian.shape
 
-    A = evecs.T @ np.diag(np.sqrt(evals)) @ evecs
-    # A = np.linalg.cholesky(np.linalg.pinv(laplacian))
-    return random_state.standard_normal((n_samples, laplacian.shape[0])) @ A.T
+    return random_state.multivariate_normal(
+        mean=np.zeros(n_nodes),
+        cov=np.linalg.pinv(laplacian),
+        size=n_samples,
+    )
