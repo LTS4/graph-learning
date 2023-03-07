@@ -72,39 +72,50 @@ def nonnegative_qp_solver(
 
 
 class LGMRF(BaseEstimator):
+    """Graph learning from Laplacian-constrained Gaussian Markov Random Field
+
+    Args:
+        norm_par (float, optional): Normalization parmater that control
+            sparsity of the network, the lower the sparser. Defaults to 1.
+        prob_tol (float, optional): Laplacian learning tolerance, stop
+            optimization if change in Fro norm is lower. Defaults to 1e-3.
+        max_cycle (int, optional): Maximun number of Laplacian optimization
+            cycles. Defaults to 50.
+        qp_step (float, optional): Inner quadratic program optimizaiton step. Defaults to 0.1.
+        qp_top (float, optional): Inner quadratic program tolerance. Defaults to 1e-6.
+        regularization_type (int, optional): Type of regularization. Defaults to 1,
+            Set the regularization matrix to one of the following
+                - 1: Regularize with $\\mathbf{H} = 2 \\mathrm{Id} - \\mathbf{11}^\\top$;
+                - 2: Regularize with $\\mathbf{H} = \\mathrm{Id} - \\mathbf{11}^\\top$;
+        laplacian_set (str, optional): Which kind of Laplacian is to be
+            learned. Defaults to 'generalized'. Options are:
+                - 'generalized', or 'g': Generalized Laplacian,
+        adj_mask (NDArray[np.int_], optional): Prior on graph connectivity.
+            Defaults to a fully connected network.
+
+    Parameters:
+        ...
+
+    Raises:
+        NotImplementedError: _description_
+
+    .. [egilmezGraphLearningData2017] H. E. Egilmez, E. Pavez, and A.
+        Ortega, “Graph Learning From Data Under Laplacian and Structural
+        Constraints,” IEEE Journal of Selected Topics in Signal Processing,
+        vol.  11, no. 6, pp. 825-841, Sep. 2017, doi: 10.1109/JSTSP.2017.2726975.
+    """
+
     def __init__(
         self,
-        alpha: float = 0.1,
         norm_par: float = 1,
-        prob_tol=1e-4,
+        prob_tol=1e-3,
+        max_cycle=50,
         qp_step=0.1,
         qp_tol=1e-6,
-        max_cycle=20,
         regularization_type=1,
         laplacian_set: str = "generalized",
         adj_mask: NDArray[np.int_] = None,
     ) -> None:
-        """Graph learning from Laplacian-constrained Gaussian Markov Random Field
-
-        Args:
-            alpha (float, optional): _description_. Defaults to None.
-            tol (float, optional): _description_. Defaults to 1e-4.
-            laplacian_set (str, optional): _description_. Defaults to 'ggl'.
-            connectivity_prior (NDArray[np.int_], optional): _description_. Defaults to None.
-
-        Parameters:
-            ...
-
-        Raises:
-            NotImplementedError: _description_
-
-        .. [egilmezGraphLearningData2017] H. E. Egilmez, E. Pavez, and A.
-            Ortega, “Graph Learning From Data Under Laplacian and Structural
-            Constraints,” IEEE Journal of Selected Topics in Signal Processing,
-            vol.  11, no. 6, pp. 825-841, Sep. 2017, doi: 10.1109/JSTSP.2017.2726975.
-
-        """
-        self.alpha = alpha
         self.norm_par = norm_par
         self.prob_tol = prob_tol
         self.qp_step = qp_step
@@ -122,9 +133,6 @@ class LGMRF(BaseEstimator):
         self._h_alpha: NDArray[np.float_]
 
     def _check_parameters(self, x):
-        if self.alpha <= 0:
-            raise ValueError(f"Alpha must be greater than 0, got {self.alpha}")
-
         if self.laplacian_set not in _LAPLACIAN_SET:
             raise ValueError(
                 f"invalid Laplacian set, got {self.laplacian_set}, must be one of [{_LAPLACIAN_SET}]"
@@ -145,9 +153,9 @@ class LGMRF(BaseEstimator):
         self.n_nodes_ = x.shape[0]
 
         if self.regularization_type == 1:
-            self._h_alpha = (self.alpha) * (2 * np.eye(self.n_nodes_) - np.ones(self.n_nodes_))
+            self._h_alpha = 2 * np.eye(self.n_nodes_) - np.ones(self.n_nodes_)
         elif self.regularization_type == 2:
-            self._h_alpha = (self.alpha) * (np.eye(self.n_nodes_) - np.ones(self.n_nodes_))
+            self._h_alpha = np.eye(self.n_nodes_) - np.ones(self.n_nodes_)
 
         x += self._h_alpha
 
@@ -161,7 +169,6 @@ class LGMRF(BaseEstimator):
         indices = np.arange(self.n_nodes_)
 
         for cycle in range(self.max_cycle):
-            # fig, ax = plt.subplots(1, self.n_nodes_, figsize=(self.n_nodes_ * 3.5, 3))
             l_pre = self.laplacian_.copy()
 
             for u in indices:
@@ -201,7 +208,6 @@ class LGMRF(BaseEstimator):
                 self.laplacian_[u, minus_u] = lapl_u
 
                 # Update the current Theta inverse
-                # TODO: understand why this only works with x_uu=1
                 inv_lapl_u = (lapl_u_inv @ lapl_u) * x_uu
                 self.inv_laplacian_[u, u] = x_uu  # 1 / (lapl_uu - lapl_u_quadratic)
                 self.inv_laplacian_[u, minus_u] = -inv_lapl_u
@@ -211,9 +217,6 @@ class LGMRF(BaseEstimator):
                     np.outer(inv_lapl_u, inv_lapl_u) / x_uu
                 )
 
-                # self.plot_weights(ax=ax[u])
-
-            # plt.show()
             if cycle > 4 and relative_error(l_pre, self.laplacian_) < self.prob_tol:
 
                 self.converged_ = cycle
@@ -222,6 +225,7 @@ class LGMRF(BaseEstimator):
         return self
 
     def fit(self, x: NDArray[np.float_], _y=None):
+        x = x / np.mean(x) * self.norm_par
         x = self._initialize(x)
 
         if self.laplacian_set in ("g", "generalized"):
