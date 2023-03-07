@@ -1,9 +1,7 @@
 """Model for Laplacian-constrained Gaussian Markov Random Field"""
-from typing import Callable
-
+import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 from graph_learn.evaluation import relative_error
@@ -21,6 +19,7 @@ _LAPLACIAN_SET = [
 def nonnegative_qp_solver(
     mat: NDArray[np.float_],
     vec: NDArray[np.float_],
+    step: float = 0.1,
     tol: float = 1e-6,
     max_iter=100,
 ) -> NDArray[np.float_]:
@@ -41,21 +40,21 @@ def nonnegative_qp_solver(
     """
     n = mat.shape[0]
 
-    # We take the cond number as regularization
-    evaln, *_, eval1 = sorted(np.abs(np.linalg.eigvalsh(mat)))
-    if eval1 / evaln < 100:  # arbitrary value
-        z_k = np.linalg.solve(mat, vec)
-        return np.where(z_k > 0, z_k, 0)
-    else:
-        lambda_ = 1 / eval1
-    # except np.linalg.LinAlgError:
-    #     # lambda_ = 1 / mat.sum()
+    # # We take the cond number as regularization
+    # evaln, *_, eval1 = sorted(np.abs(np.linalg.eigvalsh(mat)))
+    # if eval1 / evaln < 100:  # arbitrary value
+    #     z_k = np.linalg.solve(mat, vec)
+    #     return np.where(z_k > 0, z_k, 0)
+    # else:
+    #     lambda_ = 1 / eval1
+    # # except np.linalg.LinAlgError:
+    # #     # lambda_ = 1 / mat.sum()
 
-    inv = np.linalg.inv(np.eye(n) + lambda_ * mat)
+    inv = np.linalg.inv(np.eye(n) + step * mat)
 
     x_k = z_k = u_k = np.zeros(n)
     for it in range(max_iter):
-        x_kp = inv @ ((z_k - u_k) + lambda_ * vec)
+        x_kp = inv @ ((z_k - u_k) + step * vec)
         z_kp = x_kp + u_k
         z_kp[z_kp < 0] = 0
         u_k += x_kp - z_kp
@@ -78,7 +77,8 @@ class LGMRF(BaseEstimator):
         alpha: float = 0.1,
         norm_par: float = 1,
         prob_tol=1e-4,
-        inner_tol=1e-6,
+        qp_step=0.1,
+        qp_tol=1e-6,
         max_cycle=20,
         regularization_type=1,
         laplacian_set: str = "generalized",
@@ -107,7 +107,8 @@ class LGMRF(BaseEstimator):
         self.alpha = alpha
         self.norm_par = norm_par
         self.prob_tol = prob_tol
-        self.inner_tol = inner_tol
+        self.qp_step = qp_step
+        self.qp_tol = qp_tol
         self.max_cycle = max_cycle
         self.regularization_type = regularization_type
         self.laplacian_set = laplacian_set
@@ -158,7 +159,9 @@ class LGMRF(BaseEstimator):
 
     def _ggl_fit(self, x: NDArray[np.float_]):
         indices = np.arange(self.n_nodes_)
+
         for cycle in range(self.max_cycle):
+            # fig, ax = plt.subplots(1, self.n_nodes_, figsize=(self.n_nodes_ * 3.5, 3))
             l_pre = self.laplacian_.copy()
 
             for u in indices:
@@ -186,20 +189,19 @@ class LGMRF(BaseEstimator):
                 b_opt = -nonnegative_qp_solver(
                     mat=lapl_u_inv[ind_nz[:, np.newaxis], ind_nz[np.newaxis, :]],
                     vec=x_u[ind_nz] / x_uu,
-                    tol=self.inner_tol,
+                    step=self.qp_step,
+                    tol=self.qp_tol,
                 )
                 lapl_u[ind_nz] = b_opt
 
-                # lapl_u has a minus sign, disappears as quadratic form
-                lapl_u_quadratic = lapl_u.T @ lapl_u_inv @ lapl_u
-                lapl_uu = (1 / x_uu) + lapl_u_quadratic
-
                 # Update the current Theta
-                self.laplacian_[u, u] = lapl_uu
+                # lapl_u has a minus sign, disappears as quadratic form
+                self.laplacian_[u, u] = (1.0 / x_uu) + lapl_u.T @ lapl_u_inv @ lapl_u
                 self.laplacian_[minus_u, u] = lapl_u
                 self.laplacian_[u, minus_u] = lapl_u
 
                 # Update the current Theta inverse
+                # TODO: understand why this only works with x_uu=1
                 inv_lapl_u = (lapl_u_inv @ lapl_u) * x_uu
                 self.inv_laplacian_[u, u] = x_uu  # 1 / (lapl_uu - lapl_u_quadratic)
                 self.inv_laplacian_[u, minus_u] = -inv_lapl_u
@@ -209,6 +211,9 @@ class LGMRF(BaseEstimator):
                     np.outer(inv_lapl_u, inv_lapl_u) / x_uu
                 )
 
+                # self.plot_weights(ax=ax[u])
+
+            # plt.show()
             if cycle > 4 and relative_error(l_pre, self.laplacian_) < self.prob_tol:
 
                 self.converged_ = cycle
@@ -217,13 +222,19 @@ class LGMRF(BaseEstimator):
         return self
 
     def fit(self, x: NDArray[np.float_], _y=None):
-        x = squareform(pdist(x.T) ** 2)
-        theta = np.mean(x) / self.norm_par
-        # theta = 1
-
-        x = self._initialize(x / theta)
+        x = self._initialize(x)
 
         if self.laplacian_set in ("g", "generalized"):
             return self._ggl_fit(x)
         else:
             raise NotImplementedError(f"{self.laplacian_set} is not available yet")
+
+    def plot_weights(self, ax=None):
+        """Plot weights"""
+        x = -self.laplacian_
+        np.fill_diagonal(x, 0)
+        if ax is None:
+            _fig, ax = plt.subplots()
+
+        ax.imshow(x)
+        return ax
