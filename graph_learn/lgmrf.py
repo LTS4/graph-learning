@@ -82,7 +82,8 @@ class LGMRF(BaseEstimator):
         max_cycle (int, optional): Maximun number of Laplacian optimization
             cycles. Defaults to 50.
         qp_step (float, optional): Inner quadratic program optimizaiton step. Defaults to 0.1.
-        qp_top (float, optional): Inner quadratic program tolerance. Defaults to 1e-6.
+            Note: does not seem to affect learning at all.
+        qp_tol (float, optional): Inner quadratic program tolerance. Defaults to 1e-6.
         regularization_type (int, optional): Type of regularization. Defaults to 1,
             Set the regularization matrix to one of the following
                 - 1: Regularize with $\\mathbf{H} = 2 \\mathrm{Id} - \\mathbf{11}^\\top$;
