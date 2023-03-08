@@ -1,6 +1,8 @@
 """Functions for evaluation and scoring of graph learning methods"""
 import numpy as np
 from numpy.typing import NDArray
+from scipy.spatial.distance import squareform
+from sklearn.metrics import f1_score
 
 
 def relative_error(y_true: NDArray[np.float_], y_pred: NDArray[np.float_]) -> float:
@@ -21,3 +23,8 @@ def relative_error(y_true: NDArray[np.float_], y_pred: NDArray[np.float_]) -> fl
         return np.inf
 
     return err_norm / np.linalg.norm(y_true)
+
+
+def edge_f1_score(y_true, y_pred):
+    """F1 score on edge discovery. (Does not consider edge weights)"""
+    return f1_score(squareform(y_true, checks=False) > 0, squareform(y_pred, checks=False) > 0)
