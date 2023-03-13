@@ -12,6 +12,8 @@ from scipy.sparse.linalg import LinearOperator
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
+from graph_learn.evaluation import relative_error
+
 
 def _relaxed_update(
     p_var: NDArray[np.float_],
@@ -91,7 +93,7 @@ def primal_dual_splitting(
     max_iter: int = 100,
     tol: int = 1e-3,
     update: str = "dual",
-) -> tuple[NDArray, NDArray]:
+) -> tuple[NDArray, NDArray, int]:
     r"""PDS algorithm for problems of the form
     .. math::
         argmin g(\mathbf{x}) + h(\mathbf{K x})
@@ -109,7 +111,8 @@ def primal_dual_splitting(
         tol (int, optional): _description_. Defaults to 1e-3.
 
     Returns:
-        tuple[NDArray, NDArray]: _description_
+        tuple[NDArray, NDArray, int]: Primal and dual variable and interations
+            until convergence (-1 if not converged)
     """
     for i in range(max_iter):
         if update == "primal":
@@ -140,8 +143,8 @@ def primal_dual_splitting(
             raise ValueError(f"Invald PDS update, got '{update}'")
 
         if i > 0 and converged:
-            break
-    return p_var, d_var
+            return p_var, d_var, i
+    return p_var, d_var, -1
 
 
 def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
@@ -250,14 +253,16 @@ class GraphComponents(BaseEstimator):
         n_components=1,
         alpha: float = 0.5,  # TODO: find best val
         *,
-        max_iter: int = 100,
+        max_iter: int = 50,
+        tol: float = 1e-2,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
         pds_relaxation: float = None,
         random_state: RandomState = None,
-        init_startegy: str = "uniform",
+        init_strategy: str = "uniform",
         weight_prior=None,
         discretize: bool = False,
+        verbose: int = 0,
     ) -> None:
         super().__init__()
 
@@ -265,17 +270,21 @@ class GraphComponents(BaseEstimator):
         self.alpha = alpha
 
         self.max_iter = max_iter
+        self.tol = tol
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
         self.pds_relaxation = pds_relaxation
 
         self.random_state = RandomState(random_state)
-        self.init_strategy = init_startegy
+        self.init_strategy = init_strategy
         self.weight_prior = weight_prior
+
+        self.verbose = verbose
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
         self.n_nodes_: int
+        self.converged_: int
 
         self.discretize = discretize
 
@@ -297,6 +306,8 @@ class GraphComponents(BaseEstimator):
             self.activations_ = self.random_state.rand(self.n_components, n_samples)
         else:
             raise ValueError(f"Invalid initialization, got {self.init_strategy}")
+
+        self.converged_ = -1
 
     def _e_step(self, x: NDArray[np.float_], laplacians: NDArray[np.float_]):
         r"""Expectation step: compute activations
@@ -321,7 +332,7 @@ class GraphComponents(BaseEstimator):
             out = np.where(out < 1, out, 1)
             return np.where(out > 0, out, 0)
 
-        self.activations_, _ = primal_dual_splitting(
+        self.activations_, _, converged = primal_dual_splitting(
             self.activations_,
             tau * lin_op.matvec(self.activations_),
             tau=tau,
@@ -333,6 +344,15 @@ class GraphComponents(BaseEstimator):
             max_iter=self.max_iter_pds,
             tol=self.tol_pds,
         )
+
+        if self.verbose > 1:
+            if converged > 0:
+                print(f"\tE-step converged in {converged} steps")
+            else:
+                print("\tE-step did not converge")
+
+            if self.verbose > 2:
+                print(self.activations_)
 
     def _m_step(self, pdists: NDArray[np.float_]):
         """Maximization step: compute weight matrices
@@ -350,7 +370,7 @@ class GraphComponents(BaseEstimator):
             out = weights - tau * pdists
             return np.where(out > 0, out, 0)
 
-        self.weights_, _ = primal_dual_splitting(
+        self.weights_, _, converged = primal_dual_splitting(
             self.weights_,
             tau * lin_op.matvec(self.weights_),
             tau=tau,
@@ -362,6 +382,14 @@ class GraphComponents(BaseEstimator):
             max_iter=self.max_iter_pds,
             tol=self.tol_pds,
         )
+
+        if self.verbose > 1:
+            if converged > 0:
+                print(f"\tM-step converged in {converged} steps")
+            else:
+                print("\tM-step did not converge")
+            if self.verbose > 2:
+                print(*(squareform(weight) for weight in self.weights_), sep="\n")
 
     def _component_pdist(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Compute pairwise distances on each componend, based on activations
@@ -388,9 +416,23 @@ class GraphComponents(BaseEstimator):
     def fit(self, x: NDArray[np.float_], _y=None) -> GraphComponents:
         self._initialize(x)
 
-        for _it in range(self.max_iter):
+        for cycle in range(self.max_iter):
+            if self.verbose > 0:
+                print(f"Iteration {cycle}")
+
+            weights_pre = self.weights_.copy()
+
             self._m_step(self._component_pdist(x))
 
             self._e_step(x, laplacian_squareform(self.weights_))
+
+            rel_err = relative_error(weights_pre, self.weights_)
+
+            if self.verbose > 0:
+                print(f"\tRelative weight change: {rel_err}")
+
+            if rel_err < self.tol:
+                self.converged_ = cycle
+                break
 
         return self
