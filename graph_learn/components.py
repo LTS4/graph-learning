@@ -167,6 +167,7 @@ def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
     # Input shall be SPD, so negative values come from numerical erros
     eigvals[eigvals < 0] = 0
 
+    # NOTE: I could only use evals[..., 1:], evecs[..., 1:] to keep the first eigenval to zero
     # Proximal step
     eigvals = (eigvals + np.sqrt(eigvals**2 + 4 * sigma)) / 2
     return np.stack(
