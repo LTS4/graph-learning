@@ -49,10 +49,10 @@ class TMGL(GraphComponents):
         self.activations_.fill(0)
         n_samples = x.shape[0]
         n_windows = 2 ** (self.n_levels - 1)
-        self.R = n_samples // n_windows
+        win_size = n_samples // n_windows
         self.activations_[0, :] = 1
         for k in range(n_windows):
             index = n_windows - 1 + k
             while index > 0:
-                self.activations_[index, k * self.R : (k + 1) * self.R] = 1
+                self.activations_[index, k * win_size : (k + 1) * win_size] = 1
                 index = (index - 1) // 2
