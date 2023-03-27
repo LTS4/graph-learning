@@ -116,17 +116,18 @@ class GraphComponents(BaseEstimator):
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
         self.n_nodes_: int
+        self.n_samples_: int
         self.converged_: int
 
         self.discretize = discretize
 
     def _initialize(self, x: NDArray):
-        n_samples, self.n_nodes_ = x.shape
+        self.n_samples_, self.n_nodes_ = x.shape
 
         if self.init_strategy == "uniform":
             self.weight_prior = self.weight_prior or 1
 
-            self.activations_ = self.random_state.rand(self.n_components, n_samples)
+            self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
             self.weights_ = self.weight_prior * self.random_state.rand(
                 self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
             )
@@ -135,7 +136,7 @@ class GraphComponents(BaseEstimator):
                 raise ValueError("Must provide a weight prior if init_stategy is 'exact'")
 
             self.weights_ = self.weight_prior
-            self.activations_ = self.random_state.rand(self.n_components, n_samples)
+            self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
         else:
             raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
@@ -159,7 +160,7 @@ class GraphComponents(BaseEstimator):
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
 
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
-        dual = np.zeros((self.activations_.shape[1], self.n_nodes_, self.n_nodes_))
+        dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
@@ -210,19 +211,21 @@ class GraphComponents(BaseEstimator):
 
         # sigma = 1 / np.sqrt(2 * self.n_nodes_) / svdvals(self.activations_)[0]
         # Try to use sqrt(nb components) as in yamada2021temporal
-        sigma = 1 / np.sqrt(2 * self.n_nodes_) / svdvals(self.activations_)[0]
-        dual = np.zeros((self.activations_.shape[1], self.n_nodes_, self.n_nodes_))
-        # dual = sigma * np.einsum(
-        #     "knm,kt->tnm", laplacian_squareform(self.weights_), self.activations_
-        # )
+        op_norm = np.sqrt(2 * self.n_nodes_) * svdvals(self.activations_)[0]
+        tau = 1 / op_norm
+        sigma = 1 / tau / op_norm**2
+        # tau = sigma = 0.1
+        dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
+
+        prox_step = tau * (pdists + self.alpha)
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
-            weightsp = self.weights_ - sigma * laplacian_squareform_adj(
+            weightsp = self.weights_ - tau * laplacian_squareform_adj(
                 np.einsum("tnm,kt->nm", dual, self.activations_)
             )
-            weightsp -= sigma * (pdists + self.alpha)
+            weightsp -= prox_step
             weightsp[weightsp < 0] = 0
 
             # Dual update
@@ -234,7 +237,7 @@ class GraphComponents(BaseEstimator):
                     laplacian_squareform(2 * weightsp - self.weights_),
                     self.activations_,
                 ),
-                sigma,
+                sigma / self.n_samples_,
             )
 
             (self.weights_, dual), rel_norms = _relaxed_update(
@@ -288,10 +291,15 @@ class GraphComponents(BaseEstimator):
 
             # TODO: what is the best way to rescale this?
             # Options:
-            # - \propto n_nodes: ultra sparse
-            # - self.activations_.sum(1)[:, np.newaxis]:
+            # - No rescaling: all weight are zero in one step
+            # x self.n_samples_: Theoretically correct one
+            # - self.activations_.sum(1)[:, np.newaxis]: seems to work better
+            #   than n_samples, as low-activity components are quickly learned
+            # - pdists.mean(): similar to activations, brought down by components with small activations
+            # - pdists.mean(1)[:, np.newaxis]: similar to activations, almost same vals
+
             pdists = self._component_pdist(x)
-            # pdists /= self.activations_.sum(1)[:, np.newaxis]
+            pdists /= self.activations_.sum(1)[:, np.newaxis]
             self._m_step(pdists)
 
             self._e_step(x, laplacian_squareform(self.weights_))
