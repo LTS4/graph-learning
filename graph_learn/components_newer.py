@@ -93,6 +93,7 @@ class GraphComponents(BaseEstimator):
         random_state: RandomState = None,
         init_strategy: str = "uniform",
         weight_prior=None,
+        activation_prior=None,
         discretize: bool = False,
         verbose: int = 0,
     ) -> None:
@@ -110,6 +111,7 @@ class GraphComponents(BaseEstimator):
         self.random_state = RandomState(random_state)
         self.init_strategy = init_strategy
         self.weight_prior = weight_prior
+        self.activation_prior = activation_prior
 
         self.verbose = verbose
 
@@ -124,21 +126,32 @@ class GraphComponents(BaseEstimator):
     def _initialize(self, x: NDArray):
         self.n_samples_, self.n_nodes_ = x.shape
 
-        if self.init_strategy == "uniform":
-            self.weight_prior = self.weight_prior or 1
+        match self.init_strategy:
+            case "uniform":
+                self.weight_prior = self.weight_prior or 1
 
-            self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
-            self.weights_ = self.weight_prior * self.random_state.rand(
-                self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
-            )
-        elif self.init_strategy == "exact":
-            if self.weight_prior is None:
-                raise ValueError("Must provide a weight prior if init_stategy is 'exact'")
+                self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
+                self.weights_ = self.weight_prior * self.random_state.rand(
+                    self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
+                )
+            case "exact":
+                if self.weight_prior is None and self.activation_prior is None:
+                    raise ValueError(
+                        "Must provide a prior for at least one of weigths or activations if init_stategy is 'exact'"
+                    )
 
-            self.weights_ = self.weight_prior
-            self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
-        else:
-            raise ValueError(f"Invalid initialization, got {self.init_strategy}")
+                if self.weight_prior is None:
+                    self.weights_ = self.random_state.rand(
+                        self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
+                    )
+                else:
+                    self.weights_ = self.weight_prior
+                if self.activation_prior is None:
+                    self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
+                else:
+                    self.activations_ = self.activation_prior
+            case _:
+                raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
         self.converged_ = -1
 
@@ -157,7 +170,9 @@ class GraphComponents(BaseEstimator):
 
         # Optimal if =1/norm(linop)
         sigma = 1 / svdvals(laplacians.reshape(laplacians.shape[0], -1))[0]
-        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
+        smoothness = (
+            np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_samples_
+        )  # shape: n_components, n_samples
 
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
         dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
@@ -175,7 +190,7 @@ class GraphComponents(BaseEstimator):
                 dual
                 + sigma
                 * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
-                sigma,
+                sigma / self.n_samples_,
             )
 
             (self.activations_, dual), rel_norms = _relaxed_update(
@@ -209,7 +224,6 @@ class GraphComponents(BaseEstimator):
         # MOre precisely, I think I am considering the norm af the whole linear
         # operator, while the dual object is splitted for each Laplacian
 
-        # sigma = 1 / np.sqrt(2 * self.n_nodes_) / svdvals(self.activations_)[0]
         # Try to use sqrt(nb components) as in yamada2021temporal
         op_norm = np.sqrt(2 * self.n_nodes_) * svdvals(self.activations_)[0]
         tau = 1 / op_norm
