@@ -171,10 +171,9 @@ class GraphComponents(BaseEstimator):
         # Optimal if =1/norm(linop)
         sigma = 1 / svdvals(laplacians.reshape(laplacians.shape[0], -1))[0]
 
+        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
         # TODO: maybe is better to divide by self.activations_.sum(0)[np.newaxis, :]
-        smoothness = sigma * (
-            np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_samples_
-        )  # shape: n_components, n_samples
+        smoothness *= (sigma / smoothness.mean(0))[np.newaxis, :]
 
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
         dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
