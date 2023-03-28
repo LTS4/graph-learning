@@ -170,7 +170,9 @@ class GraphComponents(BaseEstimator):
 
         # Optimal if =1/norm(linop)
         sigma = 1 / svdvals(laplacians.reshape(laplacians.shape[0], -1))[0]
-        smoothness = (
+
+        # TODO: maybe is better to divide by self.activations_.sum(0)[np.newaxis, :]
+        smoothness = sigma * (
             np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_samples_
         )  # shape: n_components, n_samples
 
@@ -181,7 +183,10 @@ class GraphComponents(BaseEstimator):
         for pds_it in range(self.max_iter_pds):
             # Primal update primal
             activationsp = self.activations_ - sigma * np.einsum("knm,tnm->kt", laplacians, dual)
-            activationsp -= sigma * smoothness
+            # Gradient step
+            activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
+            # Proximal step
+            activationsp -= smoothness
             activationsp[activationsp < 0] = 0
             activationsp[activationsp > 1] = 1
 
