@@ -302,6 +302,7 @@ class GraphComponents(BaseEstimator):
                 print(f"Iteration {cycle}")
 
             weights_pre = self.weights_.copy()
+            activations_pre = self.activations_.copy()
 
             # TODO: what is the best way to rescale this?
             # Options:
@@ -318,12 +319,14 @@ class GraphComponents(BaseEstimator):
 
             self._e_step(x, laplacian_squareform(self.weights_))
 
-            rel_err = relative_error(weights_pre, self.weights_)
+            w_rel_change = relative_error(weights_pre, self.weights_)
+            a_rel_change = relative_error(activations_pre, self.activations_)
 
             if self.verbose > 0:
-                print(f"\tRelative weight change: {rel_err}")
+                print(f"\tRelative weight change: {w_rel_change}")
+                print(f"\tRelative activation change: {a_rel_change}")
 
-            if rel_err < self.tol:
+            if w_rel_change < self.tol and a_rel_change < self.tol:
                 self.converged_ = cycle
                 break
 
