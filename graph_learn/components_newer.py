@@ -216,7 +216,7 @@ class GraphComponents(BaseEstimator):
             if self.verbose > 2:
                 print(self.activations_)
 
-    def _m_step(self, pdists: NDArray[np.float_]):
+    def _m_step(self, x: NDArray[np.float_]):
         """Maximization step: compute weight matrices
 
         Args:
@@ -224,9 +224,17 @@ class GraphComponents(BaseEstimator):
                 shape (n_edges, n_components)
         """
 
-        # TODO: FIX: I think the linear operator in this step is wrong
-        # MOre precisely, I think I am considering the norm af the whole linear
-        # operator, while the dual object is splitted for each Laplacian
+        # TODO: what is the best way to rescale this?
+        # Options:
+        # - No rescaling: all weight are zero in one step
+        # x self.n_samples_: Theoretically correct one
+        # - self.activations_.sum(1)[:, np.newaxis]: seems to work better
+        #   than n_samples, as low-activity components are quickly learned
+        # - pdists.mean(): similar to activations, brought down by components with small activations
+        # - pdists.mean(1)[:, np.newaxis]: similar to activations, almost same vals
+
+        pdists = self._component_pdist(x)
+        pdists /= self.activations_.sum(1)[:, np.newaxis]
 
         # Try to use sqrt(nb components) as in yamada2021temporal
         op_norm = np.sqrt(2 * self.n_nodes_) * svdvals(self.activations_)[0]
@@ -308,18 +316,7 @@ class GraphComponents(BaseEstimator):
             weights_pre = self.weights_.copy()
             activations_pre = self.activations_.copy()
 
-            # TODO: what is the best way to rescale this?
-            # Options:
-            # - No rescaling: all weight are zero in one step
-            # x self.n_samples_: Theoretically correct one
-            # - self.activations_.sum(1)[:, np.newaxis]: seems to work better
-            #   than n_samples, as low-activity components are quickly learned
-            # - pdists.mean(): similar to activations, brought down by components with small activations
-            # - pdists.mean(1)[:, np.newaxis]: similar to activations, almost same vals
-
-            pdists = self._component_pdist(x)
-            pdists /= self.activations_.sum(1)[:, np.newaxis]
-            self._m_step(pdists)
+            self._m_step(x)
 
             self._e_step(x, laplacian_squareform(self.weights_))
 
