@@ -117,6 +117,8 @@ class GraphComponents(BaseEstimator):
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
+        self.dual_m_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
+        self.dual_e_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
         self.n_samples_: int
         self.converged_: int
@@ -154,6 +156,9 @@ class GraphComponents(BaseEstimator):
             case _:
                 raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
+        self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
+        self.dual_e_ = np.zeros_like(self.dual_m_)
+
         self.history_ = {}
         self.converged_ = -1
 
@@ -181,12 +186,14 @@ class GraphComponents(BaseEstimator):
 
         # shape: (n_samples, n_nodes, n_nodes)
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
-        dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
+        # self.dual_e_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
-            activationsp = self.activations_ - sigma * np.einsum("knm,tnm->kt", laplacians, dual)
+            activationsp = self.activations_ - sigma * np.einsum(
+                "knm,tnm->kt", laplacians, self.dual_e_
+            )
             # Gradient step
             # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
             # Proximal step
@@ -196,15 +203,15 @@ class GraphComponents(BaseEstimator):
 
             # Dual update
             dualp = prox_gdet_star(
-                dual
+                self.dual_e_
                 + sigma
                 * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
                 sigma / self.n_samples_,
             )
 
-            (self.activations_, dual), rel_norms = _relaxed_update(
+            (self.activations_, self.dual_e_), rel_norms = _relaxed_update(
                 (self.activations_, activationsp),
-                (dual, dualp),
+                (self.dual_e_, dualp),
                 relaxation=self.pds_relaxation,
             )
 
@@ -251,7 +258,7 @@ class GraphComponents(BaseEstimator):
         tau = 1 / op_norm
         sigma = 1 / tau / op_norm**2
         # tau = sigma = 0.1
-        dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
+        # self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
         prox_step = tau * (pdists + self.alpha)
 
@@ -259,14 +266,14 @@ class GraphComponents(BaseEstimator):
         for pds_it in range(self.max_iter_pds):
             # Primal update
             weightsp = self.weights_ - tau * laplacian_squareform_adj(
-                np.einsum("tnm,kt->nm", dual, self.activations_)
+                np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
             )
             weightsp -= prox_step
             weightsp[weightsp < 0] = 0
 
             # Dual update
             dualp = prox_gdet_star(
-                dual
+                self.dual_m_
                 + sigma
                 * np.einsum(
                     "knm,kt->tnm",
@@ -276,9 +283,9 @@ class GraphComponents(BaseEstimator):
                 sigma / self.n_samples_,
             )
 
-            (self.weights_, dual), rel_norms = _relaxed_update(
+            (self.weights_, self.dual_m_), rel_norms = _relaxed_update(
                 (self.weights_, weightsp),
-                (dual, dualp),
+                (self.dual_m_, dualp),
                 relaxation=self.pds_relaxation,
             )
 
