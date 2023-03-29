@@ -173,7 +173,8 @@ class GraphComponents(BaseEstimator):
 
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
         # TODO: maybe is better to divide by self.activations_.sum(0)[np.newaxis, :]
-        smoothness *= (sigma / smoothness.mean(0))[np.newaxis, :]
+        # smoothness *= (sigma / smoothness.mean(0))[np.newaxis, :]
+        smoothness *= sigma / self.n_samples_
 
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
         dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
@@ -183,7 +184,7 @@ class GraphComponents(BaseEstimator):
             # Primal update primal
             activationsp = self.activations_ - sigma * np.einsum("knm,tnm->kt", laplacians, dual)
             # Gradient step
-            activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
+            # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
             # Proximal step
             activationsp -= smoothness
             activationsp[activationsp < 0] = 0
@@ -220,8 +221,7 @@ class GraphComponents(BaseEstimator):
         """Maximization step: compute weight matrices
 
         Args:
-            pdists (NDArray[np.float_]): pairwise distances of sample-vectors,
-                shape (n_edges, n_components)
+            x (NDArray[np.float_]): Signal matrix of shape (n_edges, n_components)
         """
 
         # TODO: what is the best way to rescale this?
@@ -233,6 +233,7 @@ class GraphComponents(BaseEstimator):
         # - pdists.mean(): similar to activations, brought down by components with small activations
         # - pdists.mean(1)[:, np.newaxis]: similar to activations, almost same vals
 
+        #  pdist.shape: (n_edges, n_components) = self.weights_.shape
         pdists = self._component_pdist(x)
         pdists /= self.activations_.sum(1)[:, np.newaxis]
 
