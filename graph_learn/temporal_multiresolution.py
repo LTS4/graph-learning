@@ -40,8 +40,8 @@ class TMGL(GraphComponents):
 
         self.n_levels = n_levels
 
-    def _e_step(self, x: NDArray[np.float_], laplacians: NDArray[np.float_]):
-        return
+    def _e_step(self, x: NDArray[np.float_]) -> int:
+        return 0
 
     def _initialize(self, x: NDArray):
         super()._initialize(x)

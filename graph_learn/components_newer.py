@@ -120,6 +120,7 @@ class GraphComponents(BaseEstimator):
         self.n_nodes_: int
         self.n_samples_: int
         self.converged_: int
+        self.history_: dict[int, dict[str, int]]
 
         self.discretize = discretize
 
@@ -153,35 +154,38 @@ class GraphComponents(BaseEstimator):
             case _:
                 raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
+        self.history_ = {}
         self.converged_ = -1
 
-    def _e_step(self, x: NDArray[np.float_], laplacians: NDArray[np.float_]):
+    def _e_step(self, x: NDArray[np.float_]) -> int:
         r"""Expectation step: compute activations
 
         Args:
-            # activations (NDArray[np.float_]): Initial activations
-            #     :math:`\Delta`, of shape (n_components, n_samples)
-            # dual_var (NDArray[np.float_]): Initial dual variable :math:`V =
-            #     L_W \Delta`, of shape (n_samples, n_nodes, n_nodes)
-            x (NDArray[np.float_]): Signals matrix, of shape (n_samples, n_nodes)
-            laplacians (NDArray[np.float_]): Laplacians estimates, of shape
-                (n_components, n_nodes, n_nodes)
+            x (NDArray[np.float_]): Signals matrix of shape (n_samples, n_nodes)
+
+        Returns:
+            int: number of PDS iteation for convergence (-1 if not converged)
         """
+
+        # shape: (n_components, n_nodes, n_nodes)
+        laplacians = laplacian_squareform(self.weights_)
 
         # Optimal if =1/norm(linop)
         sigma = 1 / svdvals(laplacians.reshape(laplacians.shape[0], -1))[0]
 
-        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
+        # shape: (n_components, n_samples)
+        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
         # TODO: maybe is better to divide by self.activations_.sum(0)[np.newaxis, :]
         # smoothness *= (sigma / smoothness.mean(0))[np.newaxis, :]
         smoothness *= sigma / self.n_samples_
 
+        # shape: (n_samples, n_nodes, n_nodes)
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
         dual = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
-            # Primal update primal
+            # Primal update
             activationsp = self.activations_ - sigma * np.einsum("knm,tnm->kt", laplacians, dual)
             # Gradient step
             # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
@@ -217,11 +221,16 @@ class GraphComponents(BaseEstimator):
             if self.verbose > 2:
                 print(self.activations_)
 
-    def _m_step(self, x: NDArray[np.float_]):
+        return converged
+
+    def _m_step(self, x: NDArray[np.float_]) -> int:
         """Maximization step: compute weight matrices
 
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_edges, n_components)
+
+        Returns:
+            int: number of PDS iteation for convergence (-1 if not converged)
         """
 
         # TODO: what is the best way to rescale this?
@@ -285,6 +294,8 @@ class GraphComponents(BaseEstimator):
             if self.verbose > 2:
                 print(*(squareform(weight) for weight in self.weights_), sep="\n")
 
+        return converged
+
     def _component_pdist(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Compute pairwise distances on each componend, based on activations
 
@@ -317,9 +328,10 @@ class GraphComponents(BaseEstimator):
             weights_pre = self.weights_.copy()
             activations_pre = self.activations_.copy()
 
-            self._m_step(x)
-
-            self._e_step(x, laplacian_squareform(self.weights_))
+            self.history_[cycle] = {
+                "m_step": self._m_step(x),
+                "e_step": self._e_step(x),
+            }
 
             w_rel_change = relative_error(weights_pre, self.weights_)
             a_rel_change = relative_error(activations_pre, self.activations_)
@@ -330,6 +342,6 @@ class GraphComponents(BaseEstimator):
 
             if w_rel_change < self.tol and a_rel_change < self.tol:
                 self.converged_ = cycle
-                break
+                return self
 
         return self
