@@ -10,7 +10,8 @@ class TMGL(GraphComponents):
     def __init__(
         self,
         n_levels=1,
-        alpha: float = 0.5,
+        l1_weights: float = 1,
+        l1_activations: float = 1,
         *,
         max_iter: int = 50,
         tol: float = 0.01,
@@ -25,7 +26,8 @@ class TMGL(GraphComponents):
     ) -> None:
         super().__init__(
             n_components=2**n_levels - 1,
-            alpha=alpha,
+            l1_weights=l1_weights,
+            l1_activations=l1_activations,
             max_iter=max_iter,
             tol=tol,
             max_iter_pds=max_iter_pds,

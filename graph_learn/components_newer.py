@@ -83,10 +83,11 @@ class GraphComponents(BaseEstimator):
     def __init__(
         self,
         n_components=1,
-        alpha: float = 0.5,  # TODO: find best val
+        l1_weights: float = 1,
+        l1_activations: float = 1,
         *,
         max_iter: int = 50,
-        tol: float = 1e-2,
+        tol: float = 1e-3,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
         pds_relaxation: float = None,
@@ -100,7 +101,8 @@ class GraphComponents(BaseEstimator):
         super().__init__()
 
         self.n_components = n_components
-        self.alpha = alpha
+        self.l1_weights = l1_weights
+        self.l1_activations = l1_activations
 
         self.max_iter = max_iter
         self.tol = tol
@@ -184,6 +186,9 @@ class GraphComponents(BaseEstimator):
         # smoothness *= (sigma / smoothness.mean(0))[np.newaxis, :]
         smoothness *= sigma / self.n_samples_
 
+        # prox step
+        smoothness += sigma * self.l1_activations
+
         # shape: (n_samples, n_nodes, n_nodes)
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
         # self.dual_e_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
@@ -249,10 +254,6 @@ class GraphComponents(BaseEstimator):
         # - pdists.mean(): similar to activations, brought down by components with small activations
         # - pdists.mean(1)[:, np.newaxis]: similar to activations, almost same vals
 
-        #  pdist.shape: (n_edges, n_components) = self.weights_.shape
-        pdists = self._component_pdist(x)
-        pdists /= self.activations_.sum(1)[:, np.newaxis]
-
         # Try to use sqrt(nb components) as in yamada2021temporal
         op_norm = np.sqrt(2 * self.n_nodes_) * svdvals(self.activations_)[0]
         tau = 1 / op_norm
@@ -260,7 +261,13 @@ class GraphComponents(BaseEstimator):
         # tau = sigma = 0.1
         # self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
-        prox_step = tau * (pdists + self.alpha)
+        #  pdist.shape: (n_edges, n_components) = self.weights_.shape
+        pdists = self._component_pdist(x)
+        pdists /= self.activations_.sum(1)[:, np.newaxis]
+
+        # prox step
+        pdists += self.l1_weights
+        pdists *= tau
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
@@ -268,7 +275,7 @@ class GraphComponents(BaseEstimator):
             weightsp = self.weights_ - tau * laplacian_squareform_adj(
                 np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
             )
-            weightsp -= prox_step
+            weightsp -= pdists
             weightsp[weightsp < 0] = 0
 
             # Dual update
