@@ -84,7 +84,7 @@ class GraphComponents(BaseEstimator):
         self,
         n_components=1,
         l1_weights: float = 1,
-        rho_weights: float = 1,
+        boost_activations: float = 1,
         l1_activations: float = 1,
         *,
         max_iter: int = 50,
@@ -103,7 +103,7 @@ class GraphComponents(BaseEstimator):
 
         self.n_components = n_components
         self.l1_weights = l1_weights
-        self.rho_weights = rho_weights
+        self.boost_activations = boost_activations
         self.l1_activations = l1_activations
 
         self.max_iter = max_iter
@@ -265,7 +265,9 @@ class GraphComponents(BaseEstimator):
 
         #  pdist.shape: (n_edges, n_components) = self.weights_.shape
         pdists = self._component_pdist(x)
-        pdists /= (self.activations_.mean(1) ** self.rho_weights * self.n_samples_)[:, np.newaxis]
+        pdists /= (self.activations_.mean(1) ** self.boost_activations * self.n_samples_)[
+            :, np.newaxis
+        ]
 
         # prox step
         pdists += self.l1_weights
