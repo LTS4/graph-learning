@@ -1,8 +1,6 @@
 """Graph components learning original method"""
 from __future__ import annotations
 
-from typing import Callable
-
 import numpy as np
 from numpy.linalg import eigh
 from numpy.random import RandomState
@@ -11,6 +9,7 @@ from scipy.linalg import svdvals
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
+from graph_learn import OptimizationError
 from graph_learn.evaluation import relative_error
 
 
@@ -130,7 +129,7 @@ class GraphComponents(BaseEstimator):
 
         self.discretize = discretize
 
-    def _initialize(self, x: NDArray):
+    def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
 
         match self.init_strategy:
@@ -276,9 +275,10 @@ class GraphComponents(BaseEstimator):
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
-            weightsp = self.weights_ - tau * laplacian_squareform_adj(
+            _dual_step = tau * laplacian_squareform_adj(
                 np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
             )
+            weightsp = self.weights_ - _dual_step
             weightsp -= pdists
             weightsp[weightsp < 0] = 0
 
@@ -304,6 +304,9 @@ class GraphComponents(BaseEstimator):
                 converged = pds_it
                 break
 
+            if np.allclose(self.weights_, 0):
+                raise OptimizationError("Weights dropped to zero")
+
         if self.verbose > 1:
             if converged > 0:
                 print(f"\tM-step converged in {converged} steps")
@@ -315,13 +318,14 @@ class GraphComponents(BaseEstimator):
         return converged
 
     def _component_pdist(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
-        """Compute pairwise distances on each componend, based on activations
+        """Compute pairwise square distances on each componend, based on activations
 
         Args:
             x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Pairwise node distances of shape (n_components, n_nodes, n_nodes)
+            NDArray[np.float_]: Pairwise node squared distances of shape
+                (n_components, n_nodes, n_nodes)
         """
         if self.discretize:
             # This discretize the activations
@@ -363,3 +367,56 @@ class GraphComponents(BaseEstimator):
                 return self
 
         return self
+
+
+### PARTIAL CLASSES ############################################################
+
+
+class FixedWeights(GraphComponents):
+    """Subclass of :class:`GraphComponents` with fixed weights.
+
+    Only Activations are optimized.
+    """
+
+    def _initialize(self, x: NDArray):
+        super()._initialize(x)
+
+        if not isinstance(self.weight_prior, np.ndarray):
+            raise TypeError(
+                f"Weight prior must be a numpy array, got {type(self.activation_prior)}"
+            )
+        if self.weights_.shape != self.activation_prior.shape:
+            raise ValueError(
+                f"Invalid weight prior shape, expected {self.activations_.shape},"
+                f" got {self.weight_prior.shape}"
+            )
+
+        self.weights_ = self.weight_prior
+
+    def _m_step(self, x: NDArray[np.float_]) -> int:
+        return 0
+
+
+class FixedActivations(GraphComponents):
+    """Subclass of :class:`GraphComponents` with fixed activations.
+
+    Only weights are optimized.
+    """
+
+    def _initialize(self, x: NDArray):
+        super()._initialize(x)
+
+        if not isinstance(self.activation_prior, np.ndarray):
+            raise TypeError(
+                f"Activation prior must be a numpy array, got {type(self.activation_prior)}"
+            )
+        if self.activations_.shape != self.activation_prior.shape:
+            raise ValueError(
+                f"Invalid activation prior shape, expected {self.activations_.shape},"
+                f" got {self.activation_prior.shape}"
+            )
+
+        self.activations_ = self.activation_prior
+
+    def _e_step(self, x: NDArray[np.float_]) -> int:
+        return 0
