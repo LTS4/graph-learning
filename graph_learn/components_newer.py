@@ -263,14 +263,14 @@ class GraphComponents(BaseEstimator):
         # self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
         #  pdist.shape: (n_edges, n_components) = self.weights_.shape
-        pdists = self._component_pdist(x)
-        pdists /= (self.activations_.mean(1) ** self.boost_activations * self.n_samples_)[
+        sq_pdists = self._component_pdist_sq(x)
+        sq_pdists /= (self.activations_.mean(1) ** self.boost_activations * self.n_samples_)[
             :, np.newaxis
         ]
 
         # prox step
-        pdists += self.l1_weights
-        pdists *= tau
+        sq_pdists += self.l1_weights
+        sq_pdists *= tau
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
@@ -279,7 +279,7 @@ class GraphComponents(BaseEstimator):
                 np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
             )
             weightsp = self.weights_ - _dual_step
-            weightsp -= pdists
+            weightsp -= sq_pdists
             weightsp[weightsp < 0] = 0
 
             # Dual update
@@ -317,7 +317,7 @@ class GraphComponents(BaseEstimator):
 
         return converged
 
-    def _component_pdist(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _component_pdist_sq(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Compute pairwise square distances on each componend, based on activations
 
         Args:
