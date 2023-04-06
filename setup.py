@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 setup(
     name="graph_learn",
     packages=find_packages(),
-    version="0.0.1",
+    version="0.0.2",
     description="Extracting graphs from signals on nodes",
     author="William Cappelletti",
     license="MIT",
@@ -23,7 +23,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "networkx",
-        "numpy",
+        "numpy>=1.2.1",
         "omegaconf",
         "scikit-learn",
         "seaborn",
