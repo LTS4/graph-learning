@@ -1,9 +1,11 @@
-"""Module for learning graphs from signals"""
+"""Module for learning graphs from smooth signals"""
 from typing import Optional, Tuple
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import sparse
-from scipy.spatial.distance import squareform
+from scipy.spatial.distance import pdist, squareform
+from sklearn.base import BaseEstimator
 
 
 def sum_squareform(n: int) -> Tuple[sparse.csr_array, sparse.csr_array]:
@@ -95,27 +97,6 @@ def gsp_learn_graph_log_degrees(
     The algorithm used is forward-backward-forward (FBF) based primal dual
     optimization (see references).
 
-    Example:::
-
-          G = gsp_sensor(256);
-          f1 = @(x,y) sin((2-x-y).^2);
-          f2 = @(x,y) cos((x+y).^2);
-          f3 = @(x,y) (x-.5).^2 + (y-.5).^3 + x - y;
-          f4 = @(x,y) sin(3*((x-.5).^2+(y-.5).^2));
-          X = [f1(G.coords(:,1), G.coords(:,2)), f2(G.coords(:,1), G.coords(:,2)), f3(G.coords(:,1), G.coords(:,2)), f4(G.coords(:,1), G.coords(:,2))];
-          figure; subplot(2,2,1); gsp_plot_signal(G, X(:,1)); title('1st smooth signal');
-          subplot(2,2,2); gsp_plot_signal(G, X(:,2)); title('2nd smooth signal');
-          subplot(2,2,3); gsp_plot_signal(G, X(:,3)); title('3rd smooth signal');
-          subplot(2,2,4); gsp_plot_signal(G, X(:,4)); title('4th smooth signal');
-          Z = gsp_distanz(X').^2;
-          % we can multiply the pairwise distances with a number to control sparsity
-          [W] = gsp_learn_graph_log_degrees(Z*25, 1, 1);
-          % clean up zeros
-          W(W<1e-5) = 0;
-          G2 = gsp_update_weights(G, W);
-          figure; gsp_plot_graph(G2); title('Graph with edges learned from above 4 signals');
-
-
     The stopping criterion is whether both relative primal and dual
     distance between two iterations are below a given tolerance.
 
@@ -174,13 +155,12 @@ def gsp_learn_graph_log_degrees(
 
         if i > 0:
             # Denominators are previous iteration ones
-            # TODO: Verify why in original they use ord="fro" for vectorized primal vars
             rel_norm_primal = np.linalg.norm(-y_n + q_n, ord=2) / np.linalg.norm(edge_w, ord=2)
             rel_norm_dual = np.linalg.norm(-yb_n + qb_n, ord=2) / np.linalg.norm(d_n, ord=2)
         else:
             rel_norm_primal = rel_norm_dual = np.inf
 
-        edge_w = edge_w - y_n + q_n  # TODO: check since q_n is p_n in paper
+        edge_w = edge_w - y_n + q_n
         d_n = d_n - yb_n + qb_n
 
         if rel_norm_primal < tol and rel_norm_dual < tol:
@@ -189,3 +169,93 @@ def gsp_learn_graph_log_degrees(
     edge_w[edge_w < edge_tol] = 0
 
     return squareform(edge_w)
+
+
+def get_theta(sq_pdists: NDArray[np.float_], avg_degree: int) -> float:
+    """Compute a theta parameter to obtain desired average degree from  graph learning LogModel.
+
+    The parametrization is from V. Kalofolias and N. Perraudin, “Large Scale
+    Graph Learning from Smooth Signals.” arXiv, May 01, 2019. doi: 10.48550/arXiv.1710.05654.
+    """
+    sorted_dists = np.sort(sq_pdists, 1)
+    partial_sum = sorted_dists[:, :avg_degree].sum(1)
+
+    # NOTE: we use avg_degree -1 instead of avg_degree because the first term in
+    # the distance is always 0
+    theta_min = np.mean(
+        (
+            (avg_degree - 1) * sorted_dists[:, avg_degree + 1] ** 2
+            - partial_sum * sorted_dists[:, avg_degree + 1]
+        )
+        ** (-0.5)
+    )
+    theta_max = np.mean(
+        (
+            (avg_degree - 1) * sorted_dists[:, avg_degree] ** 2
+            - partial_sum * sorted_dists[:, avg_degree]
+        )
+        ** (-0.5)
+    )
+    return np.sqrt(theta_min * theta_max).item()
+
+
+class LogModel(BaseEstimator):
+    """Extract graph on which data is smooth from Kalofolias 2016 model.
+
+    Uses the optimal parameters from Kalofolias 2019.
+
+    Parameters:
+        avg_degree (float, optional): Desired average degree. Defaults to None.
+        edge_init (Optional[NDArray[np.float_]], optional): Prior on graph
+            weights. Defaults to None.
+        maxit (int, optional): Max optimizaiton iterations. Defaults to 1000.
+        tol (float, optional): Optimization tolerance. Defaults to 1e-5.
+        step_size (float, optional): Optimization step size. Defaults to 0.5.
+        edge_tol (float, optional): Tolerance to keep positive edges. Defaults to 1e-3.
+
+    Attributes:
+        theta_ (float): Sparsity parameter to rescale pairwise distances.
+        weights_ (NDArray[np.float_]): Edge weights of the learned graph.
+    """
+
+    def __init__(
+        self,
+        avg_degree: float = None,
+        edge_init: Optional[NDArray[np.float_]] = None,
+        maxit: int = 1000,
+        tol: float = 1e-5,
+        step_size: float = 0.5,
+        edge_tol: float = 1e-3,
+    ) -> None:
+        self.avg_degree = avg_degree
+        self.edge_init = edge_init
+        self.maxit = maxit
+        self.tol = tol
+        self.step_size = step_size
+        self.edge_tol = edge_tol
+
+        self.theta_: float
+        self.weights_: NDArray[np.float_]
+
+    def _initialize(self, sq_pdists):
+        if self.avg_degree is None:
+            self.theta_ = 1
+        else:
+            self.theta_ = get_theta(sq_pdists, self.avg_degree)
+
+    def fit(self, x: NDArray[np.float_]):
+        sq_pdists = squareform(pdist(x.T) ** 2)
+        self._initialize(sq_pdists)
+
+        self.weights_ = gsp_learn_graph_log_degrees(
+            sq_pdists * self.theta_,
+            1,
+            1,
+            edge_init=self.edge_init,
+            maxit=self.maxit,
+            tol=self.tol,
+            step_size=self.step_size,
+            edge_tol=self.edge_tol,
+        )
+
+        return self
