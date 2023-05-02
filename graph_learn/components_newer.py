@@ -11,6 +11,7 @@ from sklearn.base import BaseEstimator
 
 from graph_learn import OptimizationError
 from graph_learn.evaluation import relative_error
+from graph_learn.utils import laplacian_squareform
 
 
 def _relaxed_update(
@@ -30,20 +31,6 @@ def _relaxed_update(
             rel_norms[i] = np.inf
 
     return out, rel_norms
-
-
-def laplacian_squareform(weight: NDArray[np.float]) -> NDArray[np.float_]:
-    """Get Laplacians from vetorized edge weights
-
-    Args:
-        weights (NDArray[np.float]): Array of vectorized edge weights of shape (n_edges,)
-
-    Returns:
-        NDArray[np.float_]: Laplacian array of shape (n_nodes, n_nodes)
-    """
-
-    lapl = squareform(weight)
-    return np.diag(np.sum(weight, axis=1)) - lapl
 
 
 laplacian_squareform_vec = np.vectorize(

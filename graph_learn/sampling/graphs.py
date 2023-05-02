@@ -2,13 +2,8 @@
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.spatial.distance import squareform
 
-
-def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
-    out = squareform(x)
-    np.fill_diagonal(out, -out.sum(axis=-1))
-    return -out
+from graph_learn.utils import laplacian_squareform
 
 
 def sample_uniform_laplacian(n_nodes: int, random_state: int | RandomState = None) -> NDArray:
