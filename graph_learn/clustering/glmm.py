@@ -8,7 +8,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy.spatial.distance import pdist
 from sklearn.mixture._base import BaseMixture
 
-from graph_learn.clustering.utils import sample_uniform_laplacian
+from graph_learn.sampling.graphs import sample_uniform_laplacian
 from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
 
 
