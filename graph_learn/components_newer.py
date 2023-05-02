@@ -31,7 +31,7 @@ def _relaxed_update(
 
     return out, rel_norms
 
-
+# TODO: vetorize these functions with np.vectorize
 def laplacian_squareform(weights: NDArray[np.float]) -> NDArray[np.float_]:
     """Get Laplacians from batch of vetorized edge weights
 
@@ -68,6 +68,7 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # Input shall be SPD, so negative values come from numerical erros
     eigvals[eigvals < 0] = 0
 
+    # TODO: the first eigenvector is not necessarily the constant one, change to final subtraction
     # Proximal step
     eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
     return np.stack(
@@ -275,6 +276,7 @@ class GraphComponents(BaseEstimator):
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
+            # BUG: this is not vectorized: the dual objects is the same for all components
             _dual_step = tau * laplacian_squareform_adj(
                 np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
             )
