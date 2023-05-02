@@ -31,18 +31,24 @@ def _relaxed_update(
 
     return out, rel_norms
 
-# TODO: vetorize these functions with np.vectorize
-def laplacian_squareform(weights: NDArray[np.float]) -> NDArray[np.float_]:
-    """Get Laplacians from batch of vetorized edge weights
+
+def laplacian_squareform(weight: NDArray[np.float]) -> NDArray[np.float_]:
+    """Get Laplacians from vetorized edge weights
 
     Args:
-        weights (NDArray[np.float]): Array of vectorized edge weights of shape (n_graphs, n_edges)
+        weights (NDArray[np.float]): Array of vectorized edge weights of shape (n_edges,)
 
     Returns:
-        NDArray[np.float_]: Laplacians stacked in array of shape (n_graphs, n_nodes, n_nodes)
+        NDArray[np.float_]: Laplacian array of shape (n_nodes, n_nodes)
     """
 
-    return np.stack([np.diag(np.sum((lapl := squareform(w)), axis=1)) - lapl for w in weights])
+    lapl = squareform(weight)
+    return np.diag(np.sum(weight, axis=1)) - lapl
+
+
+laplacian_squareform_vec = np.vectorize(
+    laplacian_squareform, otypes=[float], signature="(e)->(n,n)"
+)
 
 
 def laplacian_squareform_adj(laplacian: NDArray[np.float]) -> NDArray[np.float_]:
@@ -50,6 +56,11 @@ def laplacian_squareform_adj(laplacian: NDArray[np.float]) -> NDArray[np.float_]
     out = -2 * laplacian
     neg_degs = np.sum(laplacian - np.diag(np.diag(laplacian)), axis=0)
     return squareform(out - neg_degs[:, np.newaxis] - neg_degs[np.newaxis, :], checks=False)
+
+
+laplacian_squareform_adj_vec = np.vectorize(
+    laplacian_squareform_adj, otypes=[float], signature="(n,n)->(e)"
+)
 
 
 def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
@@ -177,7 +188,8 @@ class GraphComponents(BaseEstimator):
         """
 
         # shape: (n_components, n_nodes, n_nodes)
-        laplacians = laplacian_squareform(self.weights_)
+        laplacians = laplacian_squareform_vec(self.weights_)
+        assert laplacians.shape == (self.n_components, self.n_nodes_, self.n_nodes_)
 
         # Optimal if =1/norm(linop)
         sigma = 1 / svdvals(laplacians.reshape(laplacians.shape[0], -1))[0]
@@ -247,21 +259,10 @@ class GraphComponents(BaseEstimator):
             int: number of PDS iteation for convergence (-1 if not converged)
         """
 
-        # TODO: what is the best way to rescale this?
-        # Options:
-        # - No rescaling: all weight are zero in one step
-        # x self.n_samples_: Theoretically correct one
-        # - self.activations_.sum(1)[:, np.newaxis]: seems to work better
-        #   than n_samples, as low-activity components are quickly learned
-        # - pdists.mean(): similar to activations, brought down by components with small activations
-        # - pdists.mean(1)[:, np.newaxis]: similar to activations, almost same vals
-
-        # Try to use sqrt(nb components) as in yamada2021temporal
+        # TODO: Upper bound by most active component and think about rescaling
         op_norm = np.sqrt(2 * self.n_nodes_) * svdvals(self.activations_)[0]
         tau = 1 / op_norm
         sigma = 1 / tau / op_norm**2
-        # tau = sigma = 0.1
-        # self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
 
         #  pdist.shape: (n_edges, n_components) = self.weights_.shape
         sq_pdists = self._component_pdist_sq(x)
@@ -276,10 +277,11 @@ class GraphComponents(BaseEstimator):
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
-            # BUG: this is not vectorized: the dual objects is the same for all components
-            _dual_step = tau * laplacian_squareform_adj(
+            _dual_step = tau * laplacian_squareform_adj_vec(
                 np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
             )
+            assert _dual_step.shape == self.weights_.shape
+
             weightsp = self.weights_ - _dual_step
             weightsp -= sq_pdists
             weightsp[weightsp < 0] = 0
