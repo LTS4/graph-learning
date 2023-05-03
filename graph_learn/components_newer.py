@@ -60,21 +60,23 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     Returns:
         NDArray[np.float_]: Proximal point
     """
+    _shape = dvar.shape
     # I have to identify the Laplacians which are unique, to speed-up computations
     eigvals, eigvecs = eigh(dvar)
 
     # Input shall be SPD, so negative values come from numerical erros
     eigvals[eigvals < 0] = 0
 
-    # TODO: the first eigenvector is not necessarily the constant one, change to final subtraction
     # Proximal step
     eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
-    return np.stack(
-        [
-            eigvec @ np.diag(eigval) @ eigvec.T
-            for eigval, eigvec in zip(eigvals[..., 1:], eigvecs[..., 1:])
-        ]
+    dvar = np.stack(
+        [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, eigvecs)]
     )
+    assert dvar.shape == _shape
+
+    # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
+    # Note that the norm of the eigenvector is sqrt(n_nodes)
+    return dvar + np.sqrt(sigma) / _shape[1]
 
 
 class GraphComponents(BaseEstimator):
@@ -82,7 +84,7 @@ class GraphComponents(BaseEstimator):
         self,
         n_components=1,
         l1_weights: float = 1,
-        boost_activations: float = 1,
+        boost_activations: float = 0,
         l1_activations: float = 1,
         *,
         max_iter: int = 50,
@@ -133,15 +135,21 @@ class GraphComponents(BaseEstimator):
 
         match self.init_strategy:
             case "constant":
-                self.activation_prior = self.activation_prior or 1
-                self.activations_ = self.activation_prior * np.ones(
-                    (self.n_components, self.n_samples_)
-                )
+                if self.activation_prior is None or isinstance(self.activation_prior, float):
+                    self.activation_prior = self.activation_prior or 1
+                    self.activation_prior = self.activation_prior * np.ones(
+                        (self.n_components, self.n_samples_)
+                    )
 
-                self.weight_prior = self.weight_prior or 1
-                self.weights_ = self.weight_prior * np.ones(
-                    (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
-                )
+                self.activations_ = self.activation_prior
+
+                if self.weight_prior is None or isinstance(self.weight_prior, float):
+                    self.weight_prior = self.weight_prior or 1
+                    self.weight_prior = self.weight_prior * np.ones(
+                        (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
+                    )
+
+                self.weights_ = self.weight_prior
             case "uniform":
                 self.weight_prior = self.weight_prior or 1
 
@@ -257,16 +265,11 @@ class GraphComponents(BaseEstimator):
             int: number of PDS iteation for convergence (-1 if not converged)
         """
 
-        # TODO: Upper bound by most active component and think about rescaling
-        op_norm = np.sqrt(2 * self.n_nodes_) * svdvals(self.activations_)[0]
-        tau = 1 / op_norm
-        sigma = 1 / tau / op_norm**2
+        op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
+        sigma = tau = 1 / op_norm
 
         #  pdist.shape: (n_edges, n_components) = self.weights_.shape
-        sq_pdists = self._component_pdist_sq(x)
-        sq_pdists /= (self.activations_.mean(1) ** self.boost_activations * self.n_samples_)[
-            :, np.newaxis
-        ]
+        sq_pdists = self._component_pdist_sq(x) / self.n_samples_
 
         # prox step
         sq_pdists += self.l1_weights
@@ -276,7 +279,7 @@ class GraphComponents(BaseEstimator):
         for pds_it in range(self.max_iter_pds):
             # Primal update
             _dual_step = tau * laplacian_squareform_adj_vec(
-                np.einsum("tnm,kt->nm", self.dual_m_, self.activations_)
+                np.einsum("tnm,kt->knm", self.dual_m_, self.activations_)
             )
             assert _dual_step.shape == self.weights_.shape
 
@@ -290,11 +293,12 @@ class GraphComponents(BaseEstimator):
                 + sigma
                 * np.einsum(
                     "knm,kt->tnm",
-                    laplacian_squareform(2 * weightsp - self.weights_),
+                    laplacian_squareform_vec(2 * weightsp - self.weights_),
                     self.activations_,
                 ),
                 sigma / self.n_samples_,
             )
+            assert dualp.shape == self.dual_m_.shape
 
             (self.weights_, self.dual_m_), rel_norms = _relaxed_update(
                 (self.weights_, weightsp),
@@ -387,7 +391,7 @@ class FixedWeights(GraphComponents):
             raise TypeError(
                 f"Weight prior must be a numpy array, got {type(self.activation_prior)}"
             )
-        if self.weights_.shape != self.activation_prior.shape:
+        if self.weights_.shape != self.weight_prior.shape:
             raise ValueError(
                 f"Invalid weight prior shape, expected {self.activations_.shape},"
                 f" got {self.weight_prior.shape}"
