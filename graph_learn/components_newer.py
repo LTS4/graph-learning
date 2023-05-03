@@ -89,11 +89,11 @@ class GraphComponents(BaseEstimator):
         tol: float = 1e-3,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
-        pds_relaxation: float = None,
+        pds_relaxation: float = 1,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
-        weight_prior=None,
-        activation_prior=None,
+        weight_prior: float | NDArray[np.float_] = None,
+        activation_prior: float | NDArray[np.float_] = None,
         discretize: bool = False,
         verbose: int = 0,
     ) -> None:
@@ -132,6 +132,16 @@ class GraphComponents(BaseEstimator):
         self.n_samples_, self.n_nodes_ = x.shape
 
         match self.init_strategy:
+            case "constant":
+                self.activation_prior = self.activation_prior or 1
+                self.activations_ = self.activation_prior * np.ones(
+                    (self.n_components, self.n_samples_)
+                )
+
+                self.weight_prior = self.weight_prior or 1
+                self.weights_ = self.weight_prior * np.ones(
+                    (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
+                )
             case "uniform":
                 self.weight_prior = self.weight_prior or 1
 
@@ -142,7 +152,8 @@ class GraphComponents(BaseEstimator):
             case "exact":
                 if self.weight_prior is None and self.activation_prior is None:
                     raise ValueError(
-                        "Must provide a prior for at least one of weigths or activations if init_stategy is 'exact'"
+                        "Must provide a prior for at least one of weigths or"
+                        " activations if init_stategy is 'exact'"
                     )
 
                 if self.weight_prior is None:
