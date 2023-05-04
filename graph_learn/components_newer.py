@@ -192,6 +192,7 @@ class GraphComponents(BaseEstimator):
         Returns:
             int: number of PDS iteation for convergence (-1 if not converged)
         """
+        raise NotImplementedError("TODO: fix activation dropping to zero (dual objective too weak)")
 
         # shape: (n_components, n_nodes, n_nodes)
         laplacians = laplacian_squareform_vec(self.weights_)
@@ -202,12 +203,12 @@ class GraphComponents(BaseEstimator):
 
         # shape: (n_components, n_samples)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
-        # TODO: maybe is better to divide by self.activations_.sum(0)[np.newaxis, :]
-        # smoothness *= (sigma / smoothness.mean(0))[np.newaxis, :]
-        smoothness *= sigma / self.n_samples_
+        smoothness /= self.n_samples_
 
         # prox step
-        smoothness += sigma * self.l1_activations
+        smoothness += self.l1_activations
+        smoothness *= sigma
+        # TODO: consider boost
 
         # shape: (n_samples, n_nodes, n_nodes)
         # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
@@ -265,6 +266,7 @@ class GraphComponents(BaseEstimator):
             int: number of PDS iteation for convergence (-1 if not converged)
         """
 
+        # NOTE: This is an upper bound, might get better convergence with tailored steps
         op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
         sigma = tau = 1 / op_norm
 
@@ -274,6 +276,7 @@ class GraphComponents(BaseEstimator):
         # prox step
         sq_pdists += self.l1_weights
         sq_pdists *= tau
+        # TODO: consider boost
 
         converged = -1
         for pds_it in range(self.max_iter_pds):
