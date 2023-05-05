@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import numpy as np
-from numpy.linalg import eigh
+from numpy.linalg import eigh, eigvalsh
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.linalg import svdvals
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
@@ -192,14 +191,13 @@ class GraphComponents(BaseEstimator):
         Returns:
             int: number of PDS iteation for convergence (-1 if not converged)
         """
-        raise NotImplementedError("TODO: fix activation dropping to zero (dual objective too weak)")
-
         # shape: (n_components, n_nodes, n_nodes)
         laplacians = laplacian_squareform_vec(self.weights_)
         assert laplacians.shape == (self.n_components, self.n_nodes_, self.n_nodes_)
 
         # Optimal if =1/norm(linop)
-        sigma = 1 / svdvals(laplacians.reshape(laplacians.shape[0], -1))[0]
+        op_norm = np.sqrt(np.max(eigvalsh(laplacians)))
+        sigma = 1 / op_norm
 
         # shape: (n_components, n_samples)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
@@ -217,9 +215,8 @@ class GraphComponents(BaseEstimator):
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
-            activationsp = self.activations_ - sigma * np.einsum(
-                "knm,tnm->kt", laplacians, self.dual_e_
-            )
+            _dual_step = sigma * np.einsum("knm,tnm->kt", laplacians, self.dual_e_)
+            activationsp = self.activations_ - _dual_step
             # Gradient step
             # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
             # Proximal step
