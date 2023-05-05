@@ -242,6 +242,9 @@ class GraphComponents(BaseEstimator):
                 converged = pds_it
                 break
 
+            if np.allclose(self.activations_, 0):
+                raise OptimizationError("Activations dropped to zero")
+
         if self.verbose > 1:
             if converged > 0:
                 print(f"\tE-step converged in {converged} steps")
