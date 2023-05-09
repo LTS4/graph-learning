@@ -1,6 +1,8 @@
 """Graph components learning original method"""
 from __future__ import annotations
 
+from warnings import warn
+
 import numpy as np
 from numpy.linalg import eigh, eigvalsh
 from numpy.random import RandomState
@@ -83,6 +85,7 @@ class GraphComponents(BaseEstimator):
         self,
         n_components=1,
         l1_weights: float = 1,
+        ortho_weights: float = 0,
         boost_activations: float = 0,
         l1_activations: float = 1,
         *,
@@ -102,11 +105,14 @@ class GraphComponents(BaseEstimator):
 
         self.n_components = n_components
         self.l1_weights = l1_weights
+        self.ortho_weights = ortho_weights
         self.boost_activations = boost_activations
         self.l1_activations = l1_activations
 
         self.max_iter = max_iter
         self.tol = tol
+        # TODO: do
+        warn("Consider allowing separate PDS max_iter")
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
         self.pds_relaxation = pds_relaxation
@@ -268,7 +274,13 @@ class GraphComponents(BaseEstimator):
 
         # NOTE: This is an upper bound, might get better convergence with tailored steps
         op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
-        sigma = tau = 1 / op_norm
+        if self.ortho_weights > 0:
+            sigma = tau = (
+                -self.ortho_weights * np.sqrt(self.n_components)
+                + np.sqrt(self.ortho_weights**2 * self.n_components + 4 * op_norm**2)
+            ) / (2 * op_norm**2)
+        else:
+            sigma = tau = 1 / op_norm
 
         #  pdist.shape: (n_edges, n_components) = self.weights_.shape
         sq_pdists = self._component_pdist_sq(x) / self.n_samples_
@@ -286,7 +298,10 @@ class GraphComponents(BaseEstimator):
             )
             assert _dual_step.shape == self.weights_.shape
 
-            weightsp = self.weights_ - _dual_step
+            # TODO: verify shapes
+            _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
+
+            weightsp = self.weights_ - _dual_step - _grad_step
             weightsp -= sq_pdists
             weightsp[weightsp < 0] = 0
 
