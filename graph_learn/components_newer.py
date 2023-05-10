@@ -111,8 +111,6 @@ class GraphComponents(BaseEstimator):
 
         self.max_iter = max_iter
         self.tol = tol
-        # TODO: do
-        warn("Consider allowing separate PDS max_iter")
         self.max_iter_pds = max_iter_pds
         self.tol_pds = tol_pds
         self.pds_relaxation = pds_relaxation
@@ -275,10 +273,9 @@ class GraphComponents(BaseEstimator):
         # NOTE: This is an upper bound, might get better convergence with tailored steps
         op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
         if self.ortho_weights > 0:
-            sigma = tau = (
-                -self.ortho_weights * np.sqrt(self.n_components)
-                + np.sqrt(self.ortho_weights**2 * self.n_components + 4 * op_norm**2)
-            ) / (2 * op_norm**2)
+            warn("Lipschitz constant is wrong")
+            _beta2 = self.ortho_weights * np.sqrt(self.n_components)
+            sigma = tau = (-_beta2 + np.sqrt(_beta2**2 + 4 * op_norm**2)) / (2 * op_norm**2)
         else:
             sigma = tau = 1 / op_norm
 
@@ -298,8 +295,25 @@ class GraphComponents(BaseEstimator):
             )
             assert _dual_step.shape == self.weights_.shape
 
-            # TODO: verify shapes
-            _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
+            # # Dot product regularization
+            # _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
+
+            # Normalized orthogonality
+            _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
+            _grad_step = (
+                tau
+                * 2
+                * self.ortho_weights
+                * _inv_norms[:, np.newaxis]
+                * (
+                    (
+                        np.eye(self.weights_.shape[1])[np.newaxis, ...]
+                        - (_inv_norms**2)[:, np.newaxis, np.newaxis]
+                        * np.stack([np.outer(w, w) for w in self.weights_])
+                    )
+                    @ (self.weights_.T @ _inv_norms)
+                )
+            )
 
             weightsp = self.weights_ - _dual_step - _grad_step
             weightsp -= sq_pdists
