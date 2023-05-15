@@ -87,7 +87,7 @@ class GraphComponents(BaseEstimator):
         l1_weights: float = 1,
         ortho_weights: float = 0,
         boost_activations: float = 0,
-        l1_activations: float = 1,
+        l1_activations: float = 0,
         *,
         max_iter: int = 50,
         tol: float = 1e-3,
@@ -99,6 +99,7 @@ class GraphComponents(BaseEstimator):
         weight_prior: float | NDArray[np.float_] = None,
         activation_prior: float | NDArray[np.float_] = None,
         discretize: bool = False,
+        normalize: bool = False,
         verbose: int = 0,
     ) -> None:
         super().__init__()
@@ -132,6 +133,7 @@ class GraphComponents(BaseEstimator):
         self.history_: dict[int, dict[str, int]]
 
         self.discretize = discretize
+        self.normalize = normalize
 
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
@@ -318,6 +320,10 @@ class GraphComponents(BaseEstimator):
             weightsp = self.weights_ - _dual_step - _grad_step
             weightsp -= sq_pdists
             weightsp[weightsp < 0] = 0
+
+            # Normalization
+            if self.normalize:
+                weightsp /= np.linalg.norm(weightsp, axis=1, keepdims=True)
 
             # Dual update
             dualp = prox_gdet_star(
