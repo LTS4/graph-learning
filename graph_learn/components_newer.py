@@ -302,20 +302,23 @@ class GraphComponents(BaseEstimator):
 
             # Normalized orthogonality
             _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
-            _grad_step = (
-                tau
-                * 2
-                * self.ortho_weights
-                * _inv_norms[:, np.newaxis]
-                * (
-                    (
-                        np.eye(self.weights_.shape[1])[np.newaxis, ...]
-                        - (_inv_norms**2)[:, np.newaxis, np.newaxis]
-                        * np.stack([np.outer(w, w) for w in self.weights_])
+            if self.ortho_weights > 0:
+                _grad_step = (
+                    tau
+                    * 2
+                    * self.ortho_weights
+                    * _inv_norms[:, np.newaxis]
+                    * (
+                        (
+                            np.eye(self.weights_.shape[1])[np.newaxis, ...]
+                            - (_inv_norms**2)[:, np.newaxis, np.newaxis]
+                            * np.stack([np.outer(w, w) for w in self.weights_])
+                        )
+                        @ (self.weights_.T @ _inv_norms)
                     )
-                    @ (self.weights_.T @ _inv_norms)
                 )
-            )
+            else:
+                _grad_step = 0
 
             weightsp = self.weights_ - _dual_step - _grad_step
             weightsp -= sq_pdists
