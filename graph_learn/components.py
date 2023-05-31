@@ -1,154 +1,58 @@
 """Graph components learning original method"""
 from __future__ import annotations
 
-from typing import Callable
+from warnings import warn
 
 import numpy as np
-from numpy.linalg import eigh
+from numpy.linalg import eigh, eigvalsh
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.linalg import svdvals
-from scipy.sparse.linalg import LinearOperator
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
+from graph_learn import OptimizationError
 from graph_learn.evaluation import relative_error
+from graph_learn.utils import laplacian_squareform
 
 
 def _relaxed_update(
-    p_var: NDArray[np.float_],
-    p_var1: NDArray[np.float_],
-    d_var: NDArray[np.float_],
-    d_var1: NDArray[np.float_],
+    *pairs: list[tuple[NDArray[np.float_], NDArray[np.float_]]],
     relaxation: float,
-    tol: int = 1e-3,
-) -> tuple[NDArray, NDArray, bool]:
+) -> tuple[list[NDArray], NDArray]:
     # Denominators are previous iteration ones
-    rel_norm_primal = (
-        relaxation * np.linalg.norm((p_var1 - p_var).ravel()) / np.linalg.norm(p_var.ravel())
-    )
-    rel_norm_dual = (
-        relaxation * np.linalg.norm((d_var1 - d_var).ravel()) / np.linalg.norm(d_var.ravel())
-    )
+    out = []
+    rel_norms = np.empty(len(pairs), dtype=float)
+    for i, (var, var1) in enumerate(pairs):
+        out.append(relaxation * var1 + (1 - relaxation) * var)
 
-    return (
-        relaxation * p_var1 + (1 - relaxation) * p_var,
-        relaxation * d_var1 + (1 - relaxation) * d_var,
-        rel_norm_primal < tol and rel_norm_dual < tol,
-    )
-
-
-def _pds_step_primal(
-    p_var: NDArray[np.float_],
-    d_var: NDArray[np.float_],
-    tau: float,
-    sigma: float,
-    relaxation: float,
-    lin_op: LinearOperator,
-    prox_g: Callable[[NDArray, float], NDArray],
-    prox_h: Callable[[NDArray, float], NDArray],
-    tol: int = 1e-3,
-) -> tuple[NDArray, NDArray, bool]:
-    p_var1 = prox_g(p_var - tau * lin_op.rmatvec(d_var), tau)
-
-    # TODO: verify wheter (2 * p_var1 - p_var) can be enforced to be positive
-    # Recall that prox_hs(x, sigma) = x - sigma * prox_h(x/sigma, 1/sigma)
-    d_var1 = d_var + sigma * lin_op.matvec(2 * p_var1 - p_var)
-    d_var1 -= sigma * prox_h(d_var1 / sigma, 1 / sigma)
-
-    return _relaxed_update(
-        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, relaxation=relaxation, tol=tol
-    )
-
-
-def _pds_step_dual(
-    p_var: NDArray[np.float_],
-    d_var: NDArray[np.float_],
-    tau: float,
-    sigma: float,
-    relaxation: float,
-    lin_op: LinearOperator,
-    prox_g: Callable[[NDArray, float], NDArray],
-    prox_h: Callable[[NDArray, float], NDArray],
-    tol: int = 1e-3,
-) -> tuple[NDArray, NDArray, bool]:
-    d_var1 = d_var - sigma * prox_h(d_var / sigma + lin_op.matvec(p_var), 1 / sigma)
-
-    p_var1 = prox_g(p_var - tau * lin_op.rmatvec(2 * d_var1 - d_var), tau)
-
-    return _relaxed_update(
-        p_var=p_var, p_var1=p_var1, d_var=d_var, d_var1=d_var1, relaxation=relaxation, tol=tol
-    )
-
-
-def primal_dual_splitting(
-    p_var: NDArray[np.float_],
-    d_var: NDArray[np.float_],
-    tau: float,
-    sigma: float,
-    relaxation: float,
-    lin_op: LinearOperator,
-    prox_g: Callable[[NDArray, float], NDArray],
-    prox_h: Callable[[NDArray, float], NDArray],
-    max_iter: int = 100,
-    tol: int = 1e-3,
-    update: str = "dual",
-) -> tuple[NDArray, NDArray, int]:
-    r"""PDS algorithm for problems of the form
-    .. math::
-        argmin g(\mathbf{x}) + h(\mathbf{K x})
-
-    Args:
-        p_var (NDArray[np.float_]): _description_
-        d_var (NDArray[np.float_]): _description_
-        tau (float): _description_
-        sigma (float): _description_
-        relaxation (float): _description_
-        lin_op (LinearOperator): _description_
-        prox_prim (Callable[[NDArray, float], NDArray]): _description_
-        prox_dual (Callable[[NDArray, float], NDArray]): _description_
-        max_iter (int, optional): _description_. Defaults to 100.
-        tol (int, optional): _description_. Defaults to 1e-3.
-
-    Returns:
-        tuple[NDArray, NDArray, int]: Primal and dual variable and interations
-            until convergence (-1 if not converged)
-    """
-    for i in range(max_iter):
-        if update == "primal":
-            p_var, d_var, converged = _pds_step_primal(
-                p_var=p_var,
-                d_var=d_var,
-                tau=tau,
-                sigma=sigma,
-                relaxation=relaxation,
-                lin_op=lin_op,
-                prox_g=prox_g,
-                prox_h=prox_h,
-                tol=tol,
-            )
-        elif update == "dual":
-            p_var, d_var, converged = _pds_step_dual(
-                p_var=p_var,
-                d_var=d_var,
-                tau=tau,
-                sigma=sigma,
-                relaxation=relaxation,
-                lin_op=lin_op,
-                prox_g=prox_g,
-                prox_h=prox_h,
-                tol=tol,
-            )
+        var_norm = np.linalg.norm(var.ravel())
+        if var_norm > 0:
+            rel_norms[i] = relaxation * np.linalg.norm((var1 - var).ravel()) / var_norm
         else:
-            raise ValueError(f"Invald PDS update, got '{update}'")
+            rel_norms[i] = np.inf
 
-        if i > 0 and converged:
-            return p_var, d_var, i
-    return p_var, d_var, -1
+    return out, rel_norms
 
 
-def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
-    """Proximal operator of the generalized determinant
+laplacian_squareform_vec = np.vectorize(
+    laplacian_squareform, otypes=[float], signature="(e)->(n,n)"
+)
+
+
+def laplacian_squareform_adj(laplacian: NDArray[np.float]) -> NDArray[np.float_]:
+    """Adjoint of laplacian squareform"""
+    out = -2 * laplacian
+    neg_degs = np.sum(laplacian - np.diag(np.diag(laplacian)), axis=0)
+    return squareform(out - neg_degs[:, np.newaxis] - neg_degs[np.newaxis, :], checks=False)
+
+
+laplacian_squareform_adj_vec = np.vectorize(
+    laplacian_squareform_adj, otypes=[float], signature="(n,n)->(e)"
+)
+
+
+def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
+    """Proximal operator of the Moreau's transpose of negative generalized log-determinant
 
     Args:
         dvar (NDArray[np.float_]): Stack of SPD matrices, of shape (k, n, n)
@@ -157,118 +61,54 @@ def prox_gdet(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
     Returns:
         NDArray[np.float_]: Proximal point
     """
-    # TODO: verify why this is wrong
-
-    # Regularize dvar
-    # dvar += (eps * np.eye(dvar.shape[-1]))[np.newaxis, ...]
+    _shape = dvar.shape
     # I have to identify the Laplacians which are unique, to speed-up computations
     eigvals, eigvecs = eigh(dvar)
 
     # Input shall be SPD, so negative values come from numerical erros
     eigvals[eigvals < 0] = 0
 
-    # NOTE: I could only use evals[..., 1:], evecs[..., 1:] to keep the first eigenval to zero
     # Proximal step
-    eigvals = (eigvals + np.sqrt(eigvals**2 + 4 * sigma)) / 2
-    return np.stack(
+    eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+    dvar = np.stack(
         [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, eigvecs)]
     )
+    assert dvar.shape == _shape
 
-
-def laplacian_squareform(weights: NDArray[np.float]) -> NDArray[np.float_]:
-    """Get Laplacians from batch of vetorized edge weights
-
-    Args:
-        weights (NDArray[np.float]): Array of vectorized edge weights of shape (n_graphs, n_edges)
-
-    Returns:
-        NDArray[np.float_]: Laplacians stacked in array of shape (n_graphs, n_nodes, n_nodes)
-    """
-
-    return np.stack([np.diag(np.sum((lapl := squareform(w)), axis=1)) - lapl for w in weights])
-
-
-def laplacian_squareform_dual(laplacian: NDArray[np.float_]) -> NDArray[np.float_]:
-    """Dual operator of :func:`laplacian_squareform`
-
-    Args:
-        laplacian (NDArray[np.float_]): Laplacian matrix of shape (n_nodes, n_nodes)
-
-    Returns:
-        NDArray[np.float_]: Vector
-    """
-    laplacian = laplacian.copy()
-    np.fill_diagonal(laplacian, 0)
-    s = np.sum(laplacian, axis=1)
-    L1 = 2 * laplacian + s[:, np.newaxis] + s[np.newaxis, :]
-    # np.fill_diagonal(L1, 0)
-    return -squareform(L1, checks=False)
-
-
-class _ExpectationLinOp:
-    def __init__(self, laplacians: NDArray[np.float_]):
-        self.laplacians = laplacians
-        self._norm: float = None
-
-    def matvec(self, x):
-        return np.einsum("knm,kt->tnm", self.laplacians, x)
-
-    def rmatvec(self, x):
-        return np.einsum("knm,tnm->kt", self.laplacians, x)
-
-    def norm(self) -> float:
-        if self._norm is None:
-            self._norm = svdvals(self.laplacians.reshape(self.laplacians.shape[0], -1))[0]
-
-        return self._norm
-
-
-class _MaximizationLinOp:
-    def __init__(self, activations: NDArray[np.float_], n_nodes: int):
-        self.activations = activations
-        self.n_nodes = n_nodes
-
-        self._norm: float = None
-
-    def matvec(self, x):
-        laplacians = laplacian_squareform(x)
-        if laplacians.shape[-1] != self.n_nodes:
-            raise ValueError("Invalid number of nodes")
-
-        return np.einsum("knm,kt->tnm", laplacians, self.activations)
-
-    def rmatvec(self, x):
-        x = np.einsum("tnm,kt->knm", x, self.activations)
-        return np.stack([laplacian_squareform_dual(laplacian) for laplacian in x])
-
-    def norm(self):
-        if self._norm is None:
-            self._norm = np.sqrt(2 * self.n_nodes) * svdvals(self.activations)[0]
-
-        return self._norm
+    # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
+    # Note that the norm of the eigenvector is sqrt(n_nodes)
+    return dvar + np.sqrt(sigma) / _shape[1]
 
 
 class GraphComponents(BaseEstimator):
     def __init__(
         self,
         n_components=1,
-        alpha: float = 0.5,  # TODO: find best val
+        l1_weights: float = 1,
+        ortho_weights: float = 0,
+        boost_activations: float = 0,
+        l1_activations: float = 0,
         *,
         max_iter: int = 50,
-        tol: float = 1e-2,
+        tol: float = 1e-3,
         max_iter_pds: int = 100,
         tol_pds: float = 1e-3,
-        pds_relaxation: float = None,
+        pds_relaxation: float = 1,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
-        weight_prior=None,
+        weight_prior: float | NDArray[np.float_] = None,
+        activation_prior: float | NDArray[np.float_] = None,
         discretize: bool = False,
+        normalize: bool = False,
         verbose: int = 0,
     ) -> None:
         super().__init__()
 
         self.n_components = n_components
-        self.alpha = alpha
+        self.l1_weights = l1_weights
+        self.ortho_weights = ortho_weights
+        self.boost_activations = boost_activations
+        self.l1_activations = l1_activations
 
         self.max_iter = max_iter
         self.tol = tol
@@ -279,72 +119,173 @@ class GraphComponents(BaseEstimator):
         self.random_state = RandomState(random_state)
         self.init_strategy = init_strategy
         self.weight_prior = weight_prior
+        self.activation_prior = activation_prior
 
         self.verbose = verbose
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
+        self.dual_m_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
+        self.dual_e_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
+        self.n_samples_: int
         self.converged_: int
+        self.history_: dict[int, dict[str, int]]
 
         self.discretize = discretize
+        self.normalize = normalize
 
-    def _initialize(self, x: NDArray):
-        n_samples, self.n_nodes_ = x.shape
+    def _initialize(self, x: NDArray) -> None:
+        self.n_samples_, self.n_nodes_ = x.shape
 
-        if self.init_strategy == "uniform":
-            self.weight_prior = self.weight_prior or 1
+        match self.init_strategy:
+            case "constant":
+                if self.activation_prior is None or isinstance(self.activation_prior, float):
+                    self.activation_prior = self.activation_prior or 1
+                    self.activation_prior = self.activation_prior * np.ones(
+                        (self.n_components, self.n_samples_)
+                    )
 
-            self.activations_ = self.random_state.rand(self.n_components, n_samples)
-            self.weights_ = self.weight_prior * self.random_state.rand(
-                self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
-            )
-        elif self.init_strategy == "exact":
-            if self.weight_prior is None:
-                raise ValueError("Must provide a weight prior if init_stategy is 'exact'")
+                self.activations_ = self.activation_prior
 
-            self.weights_ = self.weight_prior
-            self.activations_ = self.random_state.rand(self.n_components, n_samples)
-        else:
-            raise ValueError(f"Invalid initialization, got {self.init_strategy}")
+                if self.weight_prior is None or isinstance(self.weight_prior, float):
+                    self.weight_prior = self.weight_prior or 1
+                    self.weight_prior = self.weight_prior * np.ones(
+                        (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
+                    )
 
+                self.weights_ = self.weight_prior
+            case "uniform":
+                self.weight_prior = self.weight_prior or 1
+
+                self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
+                self.weights_ = self.weight_prior * self.random_state.rand(
+                    self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
+                )
+            case "exact":
+                if self.weight_prior is None and self.activation_prior is None:
+                    raise ValueError(
+                        "Must provide a prior for at least one of weigths or"
+                        " activations if init_stategy is 'exact'"
+                    )
+
+                if self.weight_prior is None:
+                    self.weights_ = self.random_state.rand(
+                        self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
+                    )
+                else:
+                    self.weights_ = self.weight_prior
+                if self.activation_prior is None:
+                    self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
+                else:
+                    self.activations_ = self.activation_prior
+            case _:
+                raise ValueError(f"Invalid initialization, got {self.init_strategy}")
+
+        if self.discretize:
+            self.activations_ = (self.activations_ > 0.5).astype(int)
+
+        self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
+        self.dual_e_ = np.zeros_like(self.dual_m_)
+
+        self.history_ = {}
         self.converged_ = -1
 
-    def _e_step(self, x: NDArray[np.float_], laplacians: NDArray[np.float_]):
+    def _e_step(self, x: NDArray[np.float_]) -> int:
         r"""Expectation step: compute activations
 
         Args:
-            # activations (NDArray[np.float_]): Initial activations
-            #     :math:`\Delta`, of shape (n_components, n_samples)
-            # dual_var (NDArray[np.float_]): Initial dual variable :math:`V =
-            #     L_W \Delta`, of shape (n_samples, n_nodes, n_nodes)
-            x (NDArray[np.float_]): Signals matrix, of shape (n_samples, n_nodes)
-            laplacians (NDArray[np.float_]): Laplacians estimates, of shape
-                (n_components, n_nodes, n_nodes)
+            x (NDArray[np.float_]): Signals matrix of shape (n_samples, n_nodes)
+
+        Returns:
+            int: number of PDS iteation for convergence (-1 if not converged)
         """
+        # shape: (n_components, n_nodes, n_nodes)
+        laplacians = laplacian_squareform_vec(self.weights_)
+        assert laplacians.shape == (self.n_components, self.n_nodes_, self.n_nodes_)
 
-        lin_op = _ExpectationLinOp(laplacians)
-        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)  # shape: n_components, n_samples
-        # TODO: Yamada&Tanaka use sctrictly smaller
-        tau = 0.9 / lin_op.norm()
+        # Optimal if =1/norm(linop)
+        op_norm = np.sqrt(np.max(eigvalsh(laplacians)))
+        sigma = 1 / op_norm
 
-        def prox_g(delta, tau):
-            out = delta - tau * smoothness
-            out = np.where(out < 1, out, 1)
-            return np.where(out > 0, out, 0)
+        # shape: (n_components, n_samples)
+        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
+        smoothness /= self.n_samples_
 
-        self.activations_, _, converged = primal_dual_splitting(
-            self.activations_,
-            tau * lin_op.matvec(self.activations_),
-            tau=tau,
-            sigma=tau,
-            relaxation=self.pds_relaxation,
-            lin_op=lin_op,
-            prox_g=prox_g,
-            prox_h=prox_gdet,
-            max_iter=self.max_iter_pds,
-            tol=self.tol_pds,
-        )
+        # prox step
+        smoothness += self.l1_activations
+        smoothness *= sigma
+        # TODO: consider boost
+
+        # shape: (n_samples, n_nodes, n_nodes)
+        # dual = np.einsum("knm,kt->tnm", laplacians, self.activations_)
+        # self.dual_e_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
+
+        converged = -1
+        for pds_it in range(self.max_iter_pds):
+            # Primal update
+            _dual_step = sigma * np.einsum("knm,tnm->kt", laplacians, self.dual_e_)
+            activationsp = self.activations_ - _dual_step
+            # Gradient step
+            # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
+            # Proximal step
+            activationsp -= smoothness
+
+            if False and self.discretize:
+                # TODO: test whether centering smoothness around 0.5 is useful.
+                # TODO: consider wether this is relevant
+                _thresh = activationsp < 0.5
+                activationsp[_thresh] = 0
+                activationsp[~_thresh] = 1
+            else:
+                activationsp[activationsp < 0] = 0
+                activationsp[activationsp > 1] = 1
+
+            # Dual update
+            if self.discretize:
+                _overshoot = ((2 * activationsp - self.activations_) > 0.5).astype(int)
+                hashtable = [x.data.tobytes() for x in _overshoot.T]
+                dual_dict = dict(
+                    zip(
+                        hashtable,
+                        prox_gdet_star(
+                            self.dual_e_
+                            + sigma
+                            * np.einsum(
+                                "knm,kt->tnm",
+                                laplacians,
+                                np.stack(list(dict(zip(hashtable, _overshoot.T)).values())).T,
+                            ),
+                            sigma / self.n_samples_,
+                        ),
+                    )
+                )
+
+                dualp = np.stack([dual_dict[x] for x in hashtable])
+                assert dualp.shape == self.dual_e_.shape
+            else:
+                dualp = prox_gdet_star(
+                    self.dual_e_
+                    + sigma
+                    * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
+                    sigma / self.n_samples_,
+                )
+
+            (self.activations_, self.dual_e_), rel_norms = _relaxed_update(
+                (self.activations_, activationsp),
+                (self.dual_e_, dualp),
+                relaxation=self.pds_relaxation,
+            )
+
+            if self.discretize:
+                self.activations_ = (self.activations_ > 0.5).astype(int)
+
+            if np.all(rel_norms < self.tol_pds):
+                converged = pds_it
+                break
+
+            if np.allclose(self.activations_, 0):
+                raise OptimizationError("Activations dropped to zero")
 
         if self.verbose > 1:
             if converged > 0:
@@ -355,34 +296,125 @@ class GraphComponents(BaseEstimator):
             if self.verbose > 2:
                 print(self.activations_)
 
-    def _m_step(self, pdists: NDArray[np.float_]):
+        return converged
+
+    def _m_step(self, x: NDArray[np.float_]) -> int:
         """Maximization step: compute weight matrices
 
         Args:
-            pdists (NDArray[np.float_]): pairwise distances of sample-vectors,
-                shape (n_edges, n_components)
+            x (NDArray[np.float_]): Signal matrix of shape (n_edges, n_components)
+
+        Returns:
+            int: number of PDS iteation for convergence (-1 if not converged)
         """
-        lin_op = _MaximizationLinOp(self.activations_, self.n_nodes_)
-        tau = 0.9 / lin_op.norm()
+        if self.discretize:
+            hashtable = [x.data.tobytes() for x in self.activations_.T]
+            unique_activations = np.stack(
+                list(dict(zip(hashtable, self.activations_.T)).values())
+            ).T
+            # shape: (n_components, n_unique)
+            assert unique_activations.shape[0] == self.n_components
 
-        pdists = pdists / 2 + self.alpha
+        # NOTE: This is an upper bound, might get better convergence with tailored steps
+        op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
+        if self.ortho_weights > 0:
+            warn("Lipschitz constant is wrong")
+            _beta2 = self.ortho_weights * np.sqrt(self.n_components)
+            sigma = tau = (-_beta2 + np.sqrt(_beta2**2 + 4 * op_norm**2)) / (2 * op_norm**2)
+        else:
+            sigma = tau = 1 / op_norm
 
-        def prox_g(weights, tau):
-            out = weights - tau * pdists
-            return np.where(out > 0, out, 0)
+        #  pdist.shape: (n_edges, n_components) = self.weights_.shape
+        sq_pdists = self._component_pdist_sq(x) / self.n_samples_
 
-        self.weights_, _, converged = primal_dual_splitting(
-            self.weights_,
-            tau * lin_op.matvec(self.weights_),
-            tau=tau,
-            sigma=tau,
-            relaxation=self.pds_relaxation,
-            lin_op=lin_op,
-            prox_g=prox_g,
-            prox_h=prox_gdet,
-            max_iter=self.max_iter_pds,
-            tol=self.tol_pds,
-        )
+        # prox step
+        sq_pdists += self.l1_weights
+        sq_pdists *= tau
+        # TODO: consider boost
+
+        converged = -1
+        for pds_it in range(self.max_iter_pds):
+            # Primal update
+            _dual_step = tau * laplacian_squareform_adj_vec(
+                np.einsum("tnm,kt->knm", self.dual_m_, self.activations_)
+            )
+            assert _dual_step.shape == self.weights_.shape
+
+            # # Dot product regularization
+            # _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
+
+            # Normalized orthogonality
+            _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
+            if self.ortho_weights > 0:
+                _grad_step = (
+                    tau
+                    * 2
+                    * self.ortho_weights
+                    * _inv_norms[:, np.newaxis]
+                    * (
+                        (
+                            np.eye(self.weights_.shape[1])[np.newaxis, ...]
+                            - (_inv_norms**2)[:, np.newaxis, np.newaxis]
+                            * np.stack([np.outer(w, w) for w in self.weights_])
+                        )
+                        @ (self.weights_.T @ _inv_norms)
+                    )
+                )
+            else:
+                _grad_step = 0
+
+            weightsp = self.weights_ - _dual_step - _grad_step
+            weightsp -= sq_pdists
+            weightsp[weightsp < 0] = 0
+
+            # Normalization
+            if self.normalize:
+                weightsp /= np.linalg.norm(weightsp, axis=1, keepdims=True)
+
+            # Dual update
+            if self.discretize:
+                dual_dict = dict(
+                    zip(
+                        hashtable,
+                        prox_gdet_star(
+                            # self.dual_m_
+                            +sigma
+                            * np.einsum(
+                                "knm,kt->tnm",
+                                laplacian_squareform_vec(2 * weightsp - self.weights_),
+                                unique_activations,
+                            ),
+                            sigma / self.n_samples_,
+                        ),
+                    )
+                )
+
+                dualp = np.stack([dual_dict[x] for x in hashtable])
+            else:
+                dualp = prox_gdet_star(
+                    self.dual_m_
+                    + sigma
+                    * np.einsum(
+                        "knm,kt->tnm",
+                        laplacian_squareform_vec(2 * weightsp - self.weights_),
+                        self.activations_,
+                    ),
+                    sigma / self.n_samples_,
+                )
+            assert dualp.shape == self.dual_m_.shape
+
+            (self.weights_, self.dual_m_), rel_norms = _relaxed_update(
+                (self.weights_, weightsp),
+                (self.dual_m_, dualp),
+                relaxation=self.pds_relaxation,
+            )
+
+            if np.all(rel_norms < self.tol_pds):
+                converged = pds_it
+                break
+
+            if np.allclose(self.weights_, 0):
+                raise OptimizationError("Weights dropped to zero")
 
         if self.verbose > 1:
             if converged > 0:
@@ -392,16 +424,19 @@ class GraphComponents(BaseEstimator):
             if self.verbose > 2:
                 print(*(squareform(weight) for weight in self.weights_), sep="\n")
 
-    def _component_pdist(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
-        """Compute pairwise distances on each componend, based on activations
+        return converged
+
+    def _component_pdist_sq(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+        """Compute pairwise square distances on each componend, based on activations
 
         Args:
             x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Pairwise node distances of shape (n_components, n_nodes, n_nodes)
+            NDArray[np.float_]: Pairwise node squared distances of shape
+                (n_components, n_nodes, n_nodes)
         """
-        if self.discretize:
+        if False and self.discretize:
             # This discretize the activations
             return np.stack([pdist(x[mask > 0.5].T) ** 2 for mask in self.activations_])
 
@@ -422,18 +457,75 @@ class GraphComponents(BaseEstimator):
                 print(f"Iteration {cycle}")
 
             weights_pre = self.weights_.copy()
+            activations_pre = self.activations_.copy()
 
-            self._m_step(self._component_pdist(x))
+            self.history_[cycle] = {
+                "m_step": self._m_step(x),
+                "e_step": self._e_step(x),
+            }
 
-            self._e_step(x, laplacian_squareform(self.weights_))
-
-            rel_err = relative_error(weights_pre, self.weights_)
+            w_rel_change = relative_error(weights_pre, self.weights_)
+            a_rel_change = relative_error(activations_pre, self.activations_)
 
             if self.verbose > 0:
-                print(f"\tRelative weight change: {rel_err}")
+                print(f"\tRelative weight change: {w_rel_change}")
+                print(f"\tRelative activation change: {a_rel_change}")
 
-            if rel_err < self.tol:
+            if w_rel_change < self.tol and a_rel_change < self.tol:
                 self.converged_ = cycle
-                break
+                return self
 
         return self
+
+
+### PARTIAL CLASSES ############################################################
+
+
+class FixedWeights(GraphComponents):
+    """Subclass of :class:`GraphComponents` with fixed weights.
+
+    Only Activations are optimized.
+    """
+
+    def _initialize(self, x: NDArray):
+        super()._initialize(x)
+
+        if not isinstance(self.weight_prior, np.ndarray):
+            raise TypeError(
+                f"Weight prior must be a numpy array, got {type(self.activation_prior)}"
+            )
+        if self.weights_.shape != self.weight_prior.shape:
+            raise ValueError(
+                f"Invalid weight prior shape, expected {self.activations_.shape},"
+                f" got {self.weight_prior.shape}"
+            )
+
+        self.weights_ = self.weight_prior
+
+    def _m_step(self, x: NDArray[np.float_]) -> int:
+        return 0
+
+
+class FixedActivations(GraphComponents):
+    """Subclass of :class:`GraphComponents` with fixed activations.
+
+    Only weights are optimized.
+    """
+
+    def _initialize(self, x: NDArray):
+        super()._initialize(x)
+
+        if not isinstance(self.activation_prior, np.ndarray):
+            raise TypeError(
+                f"Activation prior must be a numpy array, got {type(self.activation_prior)}"
+            )
+        if self.activations_.shape != self.activation_prior.shape:
+            raise ValueError(
+                f"Invalid activation prior shape, expected {self.activations_.shape},"
+                f" got {self.activation_prior.shape}"
+            )
+
+        self.activations_ = self.activation_prior
+
+    def _e_step(self, x: NDArray[np.float_]) -> int:
+        return 0

@@ -2,12 +2,12 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from graph_learn.components_newer import GraphComponents
+from graph_learn.components import GraphComponents
 
 
 class TMGL(GraphComponents):
-    def __init__(self, n_levels=1, *args, **kwargs) -> None:
-        super().__init__(n_components=2**n_levels - 1, *args, **kwargs)
+    def __init__(self, n_levels=1, **kwargs) -> None:
+        super().__init__(n_components=2**n_levels - 1, **kwargs)
 
         self.n_levels = n_levels
 
