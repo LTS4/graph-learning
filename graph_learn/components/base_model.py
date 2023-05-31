@@ -218,7 +218,9 @@ class GraphComponents(BaseEstimator):
         converged = -1
         for pds_it in range(self.max_iter_pds):
             if self.discretize:
-                raise NotImplementedError()
+                rel_norms = self._e_pds_discrete(
+                    sigma=sigma, smoothness=smoothness, laplacians=laplacians
+                )
             else:
                 rel_norms = self._e_pds_continuous(
                     sigma=sigma, smoothness=smoothness, laplacians=laplacians
@@ -280,49 +282,49 @@ class GraphComponents(BaseEstimator):
         _dual_step = sigma * np.einsum("knm,tnm->kt", laplacians, self.dual_e_)
         activationsp = self.activations_ - _dual_step
         # Gradient step
+        # TODO: maybe this did not work as it is not parameterized
         # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
         # Proximal step
         activationsp -= smoothness
+        # TODO: test whether centering smoothness around 0.5 is useful.
+        # TODO: verify whether this is moving activations enough
 
-        if False and self.discretize:
-            # TODO: test whether centering smoothness around 0.5 is useful.
+        if False:
             # TODO: consider wether this is relevant
             _thresh = activationsp < 0.5
             activationsp[_thresh] = 0
             activationsp[~_thresh] = 1
-        else:
+        elif False:
+            # TODO: since I am discretizing the overshoot it might be
+            # interesting to let activationsp unbounded
             activationsp[activationsp < 0] = 0
             activationsp[activationsp > 1] = 1
 
         # Dual update
-        if self.discretize:
-            _overshoot = ((2 * activationsp - self.activations_) > 0.5).astype(int)
-            hashtable = [x.data.tobytes() for x in _overshoot.T]
-            dual_dict = dict(
-                zip(
-                    hashtable,
-                    prox_gdet_star(
-                        self.dual_e_
-                        + sigma
-                        * np.einsum(
-                            "knm,kt->tnm",
-                            laplacians,
-                            np.stack(list(dict(zip(hashtable, _overshoot.T)).values())).T,
-                        ),
-                        sigma / self.n_samples_,
-                    ),
-                )
-            )
+        _overshoot = ((2 * activationsp - self.activations_) > 0.5).astype(int)
+        hashtable = [x.data.tobytes() for x in self.activations_.T]
+        activations_keys = set(hashtable)
+        unique_activations_indices = np.array([hashtable.index(key) for key in activations_keys])
+        unique_activations = _overshoot[:, unique_activations_indices]
 
-            dualp = np.stack([dual_dict[x] for x in hashtable])
-            assert dualp.shape == self.dual_e_.shape
-        else:
-            dualp = prox_gdet_star(
-                self.dual_e_
-                + sigma
-                * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
-                sigma / self.n_samples_,
+        dual_dict = dict(
+            zip(
+                activations_keys,
+                prox_gdet_star(
+                    self.dual_e_[unique_activations_indices]
+                    + sigma
+                    * np.einsum(
+                        "knm,kt->tnm",
+                        laplacians,
+                        unique_activations,
+                    ),
+                    sigma / self.n_samples_,
+                ),
             )
+        )
+
+        dualp = np.stack([dual_dict[x] for x in hashtable])
+        assert dualp.shape == self.dual_e_.shape
 
         (self.activations_, self.dual_e_), rel_norms = relaxed_update(
             (self.activations_, activationsp),
@@ -457,9 +459,9 @@ class GraphComponents(BaseEstimator):
         # Discrete preparation
         hashtable = [x.data.tobytes() for x in self.activations_.T]
         activations_keys = set(hashtable)
-        # counts = {key: hashtable.count(key) for key in set(hashtable)}
         unique_activations_indices = np.array([hashtable.index(key) for key in activations_keys])
         unique_activations = self.activations_[:, unique_activations_indices]
+        # counts = {key: hashtable.count(key) for key in activations_keys}
 
         # shape: (n_components, n_unique)
         assert unique_activations.shape[0] == self.n_components
