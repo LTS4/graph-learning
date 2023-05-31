@@ -182,6 +182,9 @@ class GraphComponents(BaseEstimator):
             case _:
                 raise ValueError(f"Invalid initialization, got {self.init_strategy}")
 
+        if self.discretize:
+            self.activations_ = (self.activations_ > 0.5).astype(int)
+
         self.dual_m_ = np.zeros((self.n_samples_, self.n_nodes_, self.n_nodes_))
         self.dual_e_ = np.zeros_like(self.dual_m_)
 
@@ -227,22 +230,55 @@ class GraphComponents(BaseEstimator):
             # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
             # Proximal step
             activationsp -= smoothness
-            activationsp[activationsp < 0] = 0
-            activationsp[activationsp > 1] = 1
+
+            if False and self.discretize:
+                # TODO: test whether centering smoothness around 0.5 is useful.
+                # TODO: consider wether this is relevant
+                _thresh = activationsp < 0.5
+                activationsp[_thresh] = 0
+                activationsp[~_thresh] = 1
+            else:
+                activationsp[activationsp < 0] = 0
+                activationsp[activationsp > 1] = 1
 
             # Dual update
-            dualp = prox_gdet_star(
-                self.dual_e_
-                + sigma
-                * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
-                sigma / self.n_samples_,
-            )
+            if self.discretize:
+                _overshoot = ((2 * activationsp - self.activations_) > 0.5).astype(int)
+                hashtable = [x.data.tobytes() for x in _overshoot.T]
+                dual_dict = dict(
+                    zip(
+                        hashtable,
+                        prox_gdet_star(
+                            self.dual_e_
+                            + sigma
+                            * np.einsum(
+                                "knm,kt->tnm",
+                                laplacians,
+                                np.stack(list(dict(zip(hashtable, _overshoot.T)).values())).T,
+                            ),
+                            sigma / self.n_samples_,
+                        ),
+                    )
+                )
+
+                dualp = np.stack([dual_dict[x] for x in hashtable])
+                assert dualp.shape == self.dual_e_.shape
+            else:
+                dualp = prox_gdet_star(
+                    self.dual_e_
+                    + sigma
+                    * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
+                    sigma / self.n_samples_,
+                )
 
             (self.activations_, self.dual_e_), rel_norms = _relaxed_update(
                 (self.activations_, activationsp),
                 (self.dual_e_, dualp),
                 relaxation=self.pds_relaxation,
             )
+
+            if self.discretize:
+                self.activations_ = (self.activations_ > 0.5).astype(int)
 
             if np.all(rel_norms < self.tol_pds):
                 converged = pds_it
@@ -271,6 +307,13 @@ class GraphComponents(BaseEstimator):
         Returns:
             int: number of PDS iteation for convergence (-1 if not converged)
         """
+        if self.discretize:
+            hashtable = [x.data.tobytes() for x in self.activations_.T]
+            unique_activations = np.stack(
+                list(dict(zip(hashtable, self.activations_.T)).values())
+            ).T
+            # shape: (n_components, n_unique)
+            assert unique_activations.shape[0] == self.n_components
 
         # NOTE: This is an upper bound, might get better convergence with tailored steps
         op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
@@ -329,16 +372,35 @@ class GraphComponents(BaseEstimator):
                 weightsp /= np.linalg.norm(weightsp, axis=1, keepdims=True)
 
             # Dual update
-            dualp = prox_gdet_star(
-                self.dual_m_
-                + sigma
-                * np.einsum(
-                    "knm,kt->tnm",
-                    laplacian_squareform_vec(2 * weightsp - self.weights_),
-                    self.activations_,
-                ),
-                sigma / self.n_samples_,
-            )
+            if self.discretize:
+                dual_dict = dict(
+                    zip(
+                        hashtable,
+                        prox_gdet_star(
+                            # self.dual_m_
+                            +sigma
+                            * np.einsum(
+                                "knm,kt->tnm",
+                                laplacian_squareform_vec(2 * weightsp - self.weights_),
+                                unique_activations,
+                            ),
+                            sigma / self.n_samples_,
+                        ),
+                    )
+                )
+
+                dualp = np.stack([dual_dict[x] for x in hashtable])
+            else:
+                dualp = prox_gdet_star(
+                    self.dual_m_
+                    + sigma
+                    * np.einsum(
+                        "knm,kt->tnm",
+                        laplacian_squareform_vec(2 * weightsp - self.weights_),
+                        self.activations_,
+                    ),
+                    sigma / self.n_samples_,
+                )
             assert dualp.shape == self.dual_m_.shape
 
             (self.weights_, self.dual_m_), rel_norms = _relaxed_update(
@@ -374,7 +436,7 @@ class GraphComponents(BaseEstimator):
             NDArray[np.float_]: Pairwise node squared distances of shape
                 (n_components, n_nodes, n_nodes)
         """
-        if self.discretize:
+        if False and self.discretize:
             # This discretize the activations
             return np.stack([pdist(x[mask > 0.5].T) ** 2 for mask in self.activations_])
 
