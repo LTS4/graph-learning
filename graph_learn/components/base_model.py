@@ -339,7 +339,7 @@ class GraphComponents(BaseEstimator):
 
     def _m_step(self, x: NDArray[np.float_]) -> int:
         if self.discretize:
-            raise NotImplementedError()
+            return self._m_step_discrete(x)
 
         return self._m_step_continuous(x)
 
@@ -454,14 +454,17 @@ class GraphComponents(BaseEstimator):
         Returns:
             int: number of PDS iteation for convergence (-1 if not converged)
         """
-        if self.discretize:
-            hashtable = [x.data.tobytes() for x in self.activations_.T]
-            unique_activations = np.stack(
-                list(dict(zip(hashtable, self.activations_.T)).values())
-            ).T
-            # shape: (n_components, n_unique)
-            assert unique_activations.shape[0] == self.n_components
+        # Discrete preparation
+        hashtable = [x.data.tobytes() for x in self.activations_.T]
+        activations_keys = set(hashtable)
+        # counts = {key: hashtable.count(key) for key in set(hashtable)}
+        unique_activations_indices = np.array([hashtable.index(key) for key in activations_keys])
+        unique_activations = self.activations_[:, unique_activations_indices]
 
+        # shape: (n_components, n_unique)
+        assert unique_activations.shape[0] == self.n_components
+
+        # Common part
         # NOTE: This is an upper bound, might get better convergence with tailored steps
         op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
         if self.ortho_weights > 0:
@@ -482,6 +485,10 @@ class GraphComponents(BaseEstimator):
         converged = -1
         for pds_it in range(self.max_iter_pds):
             # Primal update
+            # TODO: I should change to discrete:
+            # self.dual_m_[unique_activations_indices], np.array(counts.values()) * self.activations_
+            # TODO: having a full dual_m is memory inefficient, but is needed for the first iteration,
+            # as activations might have changed from prev step
             _dual_step = tau * laplacian_squareform_adj_vec(
                 np.einsum("tnm,kt->knm", self.dual_m_, self.activations_)
             )
@@ -519,35 +526,26 @@ class GraphComponents(BaseEstimator):
                 weightsp /= np.linalg.norm(weightsp, axis=1, keepdims=True)
 
             # Dual update
-            if self.discretize:
-                dual_dict = dict(
-                    zip(
-                        hashtable,
-                        prox_gdet_star(
-                            # self.dual_m_
-                            +sigma
-                            * np.einsum(
-                                "knm,kt->tnm",
-                                laplacian_squareform_vec(2 * weightsp - self.weights_),
-                                unique_activations,
-                            ),
-                            sigma / self.n_samples_,
+            # Discrete specific
+            dual_dict = dict(
+                zip(
+                    activations_keys,
+                    prox_gdet_star(
+                        self.dual_m_[unique_activations_indices]
+                        + sigma
+                        * np.einsum(
+                            "knm,kt->tnm",
+                            laplacian_squareform_vec(2 * weightsp - self.weights_),
+                            unique_activations,
                         ),
-                    )
-                )
-
-                dualp = np.stack([dual_dict[x] for x in hashtable])
-            else:
-                dualp = prox_gdet_star(
-                    self.dual_m_
-                    + sigma
-                    * np.einsum(
-                        "knm,kt->tnm",
-                        laplacian_squareform_vec(2 * weightsp - self.weights_),
-                        self.activations_,
+                        sigma / self.n_samples_,
                     ),
-                    sigma / self.n_samples_,
                 )
+            )
+
+            dualp = np.stack([dual_dict[x] for x in hashtable])
+
+            # common again
             assert dualp.shape == self.dual_m_.shape
 
             (self.weights_, self.dual_m_), rel_norms = relaxed_update(
