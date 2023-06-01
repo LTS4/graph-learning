@@ -11,14 +11,13 @@ from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 from graph_learn import OptimizationError
-from graph_learn.evaluation import relative_error
-
 from graph_learn.components.utils import (
-    relaxed_update,
     laplacian_squareform_adj_vec,
     laplacian_squareform_vec,
     prox_gdet_star,
+    relaxed_update,
 )
+from graph_learn.evaluation import relative_error
 
 
 class GraphComponents(BaseEstimator):
@@ -204,7 +203,8 @@ class GraphComponents(BaseEstimator):
 
         # shape: (n_components, n_samples)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
-        smoothness /= self.n_samples_
+        # smoothness /= self.n_samples_
+        smoothness /= smoothness.mean() * 2  # Center the distribution to ~0.5
 
         # prox step
         smoothness += self.l1_activations
@@ -282,8 +282,8 @@ class GraphComponents(BaseEstimator):
         _dual_step = sigma * np.einsum("knm,tnm->kt", laplacians, self.dual_e_)
         activationsp = self.activations_ - _dual_step
         # Gradient step
-        # TODO: maybe this did not work as it is not parameterized
-        # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
+        # TODO: I have to activate this again and look into parameterization
+        activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
         # Proximal step
         activationsp -= smoothness
         # TODO: test whether centering smoothness around 0.5 is useful.
@@ -331,6 +331,9 @@ class GraphComponents(BaseEstimator):
             (self.dual_e_, dualp),
             relaxation=self.pds_relaxation,
         )
+
+        if np.allclose(self.activations_, 0):
+            raise OptimizationError("Activations collapsed")
 
         if self.discretize:
             self.activations_ = (self.activations_ > 0.5).astype(int)
@@ -556,12 +559,12 @@ class GraphComponents(BaseEstimator):
                 relaxation=self.pds_relaxation,
             )
 
+            if np.allclose(self.weights_, 0):
+                raise OptimizationError("Weights dropped to zero")
+
             if np.all(rel_norms < self.tol_pds):
                 converged = pds_it
                 break
-
-            if np.allclose(self.weights_, 0):
-                raise OptimizationError("Weights dropped to zero")
 
         if self.verbose > 1:
             if converged > 0:
