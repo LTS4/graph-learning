@@ -1,6 +1,7 @@
 """Graph components learning original method"""
 from __future__ import annotations
 
+from typing import Callable
 from warnings import warn
 
 import numpy as np
@@ -154,7 +155,12 @@ class GraphComponents(BaseEstimator):
             ]
         )
 
-    def fit(self, x: NDArray[np.float_], _y=None) -> GraphComponents:
+    def fit(
+        self,
+        x: NDArray[np.float_],
+        _y=None,
+        callback: Callable[[GraphComponents, int]] = None,
+    ) -> GraphComponents:
         self._initialize(x)
 
         for cycle in range(self.max_iter):
@@ -175,6 +181,9 @@ class GraphComponents(BaseEstimator):
             if self.verbose > 0:
                 print(f"\tRelative weight change: {w_rel_change}")
                 print(f"\tRelative activation change: {a_rel_change}")
+
+            if callback is not None:
+                callback(self, cycle)
 
             if w_rel_change < self.tol and a_rel_change < self.tol:
                 self.converged_ = cycle
@@ -203,8 +212,8 @@ class GraphComponents(BaseEstimator):
 
         # shape: (n_components, n_samples)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
-        # smoothness /= self.n_samples_
-        smoothness /= smoothness.mean() * 2  # Center the distribution to ~0.5
+        smoothness /= self.n_samples_
+        # smoothness /= smoothness.mean() * 2  # Center the distribution to ~0.5
 
         # prox step
         smoothness += self.l1_activations
@@ -230,8 +239,8 @@ class GraphComponents(BaseEstimator):
                 converged = pds_it
                 break
 
-            if np.allclose(self.activations_, 0):
-                raise OptimizationError("Activations dropped to zero")
+        if np.allclose(self.activations_, 0):
+            raise OptimizationError("Activations dropped to zero")
 
         if self.verbose > 1:
             if converged > 0:
@@ -280,27 +289,30 @@ class GraphComponents(BaseEstimator):
         """Expactation PDS step with discrete activations"""
         # Primal update
         _dual_step = sigma * np.einsum("knm,tnm->kt", laplacians, self.dual_e_)
-        activationsp = self.activations_ - _dual_step
+        # Proximal step
+        activationsp = self.activations_ - _dual_step - smoothness
         # Gradient step
         # TODO: I have to activate this again and look into parameterization
-        activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
-        # Proximal step
-        activationsp -= smoothness
+        # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
         # TODO: test whether centering smoothness around 0.5 is useful.
         # TODO: verify whether this is moving activations enough
+
+        # FIXME: I am brutally turning off activations for which the dual is smaller than smoothness
+        # activationsp = (-_dual_step > smoothness).astype(int)
 
         if False:
             # TODO: consider wether this is relevant
             _thresh = activationsp < 0.5
             activationsp[_thresh] = 0
             activationsp[~_thresh] = 1
-        elif False:
+        else:
             # TODO: since I am discretizing the overshoot it might be
             # interesting to let activationsp unbounded
             activationsp[activationsp < 0] = 0
             activationsp[activationsp > 1] = 1
 
         # Dual update
+        # TODO: Removing line 340 this is the only actual place where I discretize
         _overshoot = ((2 * activationsp - self.activations_) > 0.5).astype(int)
         hashtable = [x.data.tobytes() for x in self.activations_.T]
         activations_keys = set(hashtable)
@@ -332,11 +344,12 @@ class GraphComponents(BaseEstimator):
             relaxation=self.pds_relaxation,
         )
 
-        if np.allclose(self.activations_, 0):
-            raise OptimizationError("Activations collapsed")
+        # if np.allclose(self.activations_, 0):
+        #     raise OptimizationError("Activations collapsed")
 
-        if self.discretize:
-            self.activations_ = (self.activations_ > 0.5).astype(int)
+        # # TODO: I am removing this to allow for continuous optimization.
+        # This requires me to discretize in M-step
+        # self.activations_ = (self.activations_ > 0.5).astype(int)
 
         return rel_norms
 
@@ -460,10 +473,11 @@ class GraphComponents(BaseEstimator):
             int: number of PDS iteation for convergence (-1 if not converged)
         """
         # Discrete preparation
-        hashtable = [x.data.tobytes() for x in self.activations_.T]
+        discrete_activ = np.where(self.activations_ > 0.5, 1, 0)
+        hashtable = [x.data.tobytes() for x in discrete_activ.T]
         activations_keys = set(hashtable)
         unique_activations_indices = np.array([hashtable.index(key) for key in activations_keys])
-        unique_activations = self.activations_[:, unique_activations_indices]
+        unique_activations = discrete_activ[:, unique_activations_indices]
         # counts = {key: hashtable.count(key) for key in activations_keys}
 
         # shape: (n_components, n_unique)
@@ -471,7 +485,7 @@ class GraphComponents(BaseEstimator):
 
         # Common part
         # NOTE: This is an upper bound, might get better convergence with tailored steps
-        op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
+        op_norm = np.sqrt(2 * self.n_nodes_ * discrete_activ.sum(1).max())
         if self.ortho_weights > 0:
             warn("Lipschitz constant is wrong")
             _beta2 = self.ortho_weights * np.sqrt(self.n_components)
@@ -491,11 +505,11 @@ class GraphComponents(BaseEstimator):
         for pds_it in range(self.max_iter_pds):
             # Primal update
             # TODO: I should change to discrete:
-            # self.dual_m_[unique_activations_indices], np.array(counts.values()) * self.activations_
+            # self.dual_m_[unique_activations_indices], np.array(counts.values()) * discrete_activ
             # TODO: having a full dual_m is memory inefficient, but is needed for the first iteration,
             # as activations might have changed from prev step
             _dual_step = tau * laplacian_squareform_adj_vec(
-                np.einsum("tnm,kt->knm", self.dual_m_, self.activations_)
+                np.einsum("tnm,kt->knm", self.dual_m_, discrete_activ)
             )
             assert _dual_step.shape == self.weights_.shape
 
