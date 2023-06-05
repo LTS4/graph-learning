@@ -116,9 +116,15 @@ class GraphComponents(BaseEstimator):
                     )
                 else:
                     self.weights_ = self.weight_prior
+
                 if self.activation_prior is None:
                     self.activations_ = self.random_state.rand(self.n_components, self.n_samples_)
                 else:
+                    if isinstance(self.activation_prior, (float, int)):
+                        self.activation_prior = self.activation_prior * np.ones(
+                            (self.n_components, self.n_samples_)
+                        )
+
                     self.activations_ = self.activation_prior
             case _:
                 raise ValueError(f"Invalid initialization, got {self.init_strategy}")
@@ -212,8 +218,10 @@ class GraphComponents(BaseEstimator):
 
         # shape: (n_components, n_samples)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
-        smoothness /= self.n_samples_
         # smoothness /= smoothness.mean() * 2  # Center the distribution to ~0.5
+
+        # FIXME: random hack
+        smoothness /= 3
 
         # prox step
         smoothness += self.l1_activations
@@ -239,8 +247,8 @@ class GraphComponents(BaseEstimator):
                 converged = pds_it
                 break
 
-        if np.allclose(self.activations_, 0):
-            raise OptimizationError("Activations dropped to zero")
+            if np.allclose(self.activations_, 0):
+                raise OptimizationError("Activations dropped to zero")
 
         if self.verbose > 1:
             if converged > 0:
@@ -259,12 +267,11 @@ class GraphComponents(BaseEstimator):
         """Expactation PDS step with continuous activations"""
         # Primal update
         _dual_step = sigma * np.einsum("knm,tnm->kt", laplacians, self.dual_e_)
-        activationsp = self.activations_ - _dual_step
+        activationsp = self.activations_ - _dual_step - smoothness
         # Gradient step
         # activationsp += (sigma / self.activations_.sum(0))[np.newaxis, :]
-        # Proximal step
-        activationsp -= smoothness
 
+        # Projection
         activationsp[activationsp < 0] = 0
         activationsp[activationsp > 1] = 1
 
@@ -272,7 +279,7 @@ class GraphComponents(BaseEstimator):
         dualp = prox_gdet_star(
             self.dual_e_
             + sigma * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
-            sigma / self.n_samples_,
+            sigma / 3,  # FIXME: random hack
         )
 
         (self.activations_, self.dual_e_), rel_norms = relaxed_update(
@@ -330,7 +337,7 @@ class GraphComponents(BaseEstimator):
                         laplacians,
                         unique_activations,
                     ),
-                    sigma / self.n_samples_,
+                    sigma / 3,  # FIXME: random hack
                 ),
             )
         )
