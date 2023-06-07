@@ -115,6 +115,10 @@ class GraphComponents(BaseEstimator):
                         self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2
                     )
                 else:
+                    if isinstance(self.weight_prior, (float, int)):
+                        self.weight_prior = self.weight_prior * np.ones(
+                            (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
+                        )
                     self.weights_ = self.weight_prior
 
                 if self.activation_prior is None:
@@ -168,6 +172,8 @@ class GraphComponents(BaseEstimator):
         callback: Callable[[GraphComponents, int]] = None,
     ) -> GraphComponents:
         self._initialize(x)
+        if callback is not None:
+            callback(self, -1)
 
         for cycle in range(self.max_iter):
             if self.verbose > 0:
@@ -176,6 +182,7 @@ class GraphComponents(BaseEstimator):
             weights_pre = self.weights_.copy()
             activations_pre = self.activations_.copy()
 
+            # TODO: try to change order
             self.history_[cycle] = {
                 "m_step": self._m_step(x),
                 "e_step": self._e_step(x),
@@ -218,10 +225,10 @@ class GraphComponents(BaseEstimator):
 
         # shape: (n_components, n_samples)
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x)
-        # smoothness /= smoothness.mean() * 2  # Center the distribution to ~0.5
 
         # FIXME: random hack
-        smoothness /= 3
+        smoothness /= smoothness.mean() * 2  # Center the distribution to ~0.5
+        # smoothness /= self.n_components
 
         # prox step
         smoothness += self.l1_activations
@@ -279,7 +286,7 @@ class GraphComponents(BaseEstimator):
         dualp = prox_gdet_star(
             self.dual_e_
             + sigma * np.einsum("knm,kt->tnm", laplacians, 2 * activationsp - self.activations_),
-            sigma / 3,  # FIXME: random hack
+            sigma / self.n_components,  # FIXME: random hack
         )
 
         (self.activations_, self.dual_e_), rel_norms = relaxed_update(
@@ -337,7 +344,7 @@ class GraphComponents(BaseEstimator):
                         laplacians,
                         unique_activations,
                     ),
-                    sigma / 3,  # FIXME: random hack
+                    sigma / self.n_components,  # FIXME: random hack
                 ),
             )
         )
@@ -381,7 +388,7 @@ class GraphComponents(BaseEstimator):
         op_norm = np.sqrt(2 * self.n_nodes_ * self.activations_.sum(1).max())
         if self.ortho_weights > 0:
             warn("Lipschitz constant is wrong")
-            _beta2 = self.ortho_weights * np.sqrt(self.n_components)
+            _beta2 = self.ortho_weights * (self.n_components - 1)
             sigma = tau = (-_beta2 + np.sqrt(_beta2**2 + 4 * op_norm**2)) / (2 * op_norm**2)
         else:
             sigma = tau = 1 / op_norm
@@ -402,29 +409,39 @@ class GraphComponents(BaseEstimator):
             )
             assert _dual_step.shape == self.weights_.shape
 
-            # # Dot product regularization
-            # _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
-
-            # Normalized orthogonality
-            _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
             if self.ortho_weights > 0:
+                # # Dot product regularization
+                # _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
+
+                # Dot product externals
                 _grad_step = (
                     tau
                     * 2
                     * self.ortho_weights
-                    * _inv_norms[:, np.newaxis]
-                    * (
-                        (
-                            np.eye(self.weights_.shape[1])[np.newaxis, ...]
-                            - (_inv_norms**2)[:, np.newaxis, np.newaxis]
-                            * np.stack([np.outer(w, w) for w in self.weights_])
-                        )
-                        @ (self.weights_.T @ _inv_norms)
-                    )
+                    * (np.ones((self.n_components, self.n_components)) - np.eye(self.n_components))
+                    @ self.weights_
                 )
+
+                # # Normalized orthogonality
+                # _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
+                # _grad_step = (
+                #     tau
+                #     * 2
+                #     * self.ortho_weights
+                #     * _inv_norms[:, np.newaxis]
+                #     * (
+                #         (
+                #             np.eye(self.weights_.shape[1])[np.newaxis, ...]
+                #             - (_inv_norms**2)[:, np.newaxis, np.newaxis]
+                #             * np.stack([np.outer(w, w) for w in self.weights_])
+                #         )
+                #         @ (self.weights_.T @ _inv_norms)
+                #     )
+                # )
             else:
                 _grad_step = 0
 
+            # Proximal step
             weightsp = self.weights_ - _dual_step - _grad_step
             weightsp -= sq_pdists
             weightsp[weightsp < 0] = 0
@@ -494,8 +511,8 @@ class GraphComponents(BaseEstimator):
         # NOTE: This is an upper bound, might get better convergence with tailored steps
         op_norm = np.sqrt(2 * self.n_nodes_ * discrete_activ.sum(1).max())
         if self.ortho_weights > 0:
-            warn("Lipschitz constant is wrong")
-            _beta2 = self.ortho_weights * np.sqrt(self.n_components)
+            # warn("Lipschitz constant is wrong")
+            _beta2 = self.ortho_weights * (self.n_components - 1)
             sigma = tau = (-_beta2 + np.sqrt(_beta2**2 + 4 * op_norm**2)) / (2 * op_norm**2)
         else:
             sigma = tau = 1 / op_norm
@@ -520,26 +537,35 @@ class GraphComponents(BaseEstimator):
             )
             assert _dual_step.shape == self.weights_.shape
 
-            # # Dot product regularization
-            # _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
-
-            # Normalized orthogonality
-            _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
             if self.ortho_weights > 0:
+                # # Dot product regularization
+                # _grad_step = tau * 2 * self.ortho_weights * self.weights_.sum(0, keepdims=True)
+
+                # Dot product externals
                 _grad_step = (
                     tau
                     * 2
                     * self.ortho_weights
-                    * _inv_norms[:, np.newaxis]
-                    * (
-                        (
-                            np.eye(self.weights_.shape[1])[np.newaxis, ...]
-                            - (_inv_norms**2)[:, np.newaxis, np.newaxis]
-                            * np.stack([np.outer(w, w) for w in self.weights_])
-                        )
-                        @ (self.weights_.T @ _inv_norms)
-                    )
+                    * (np.ones((self.n_components, self.n_components)) - np.eye(self.n_components))
+                    @ self.weights_
                 )
+
+                # # Normalized orthogonality
+                # _inv_norms = 1 / np.linalg.norm(self.weights_, axis=1)
+                # _grad_step = (
+                #     tau
+                #     * 2
+                #     * self.ortho_weights
+                #     * _inv_norms[:, np.newaxis]
+                #     * (
+                #         (
+                #             np.eye(self.weights_.shape[1])[np.newaxis, ...]
+                #             - (_inv_norms**2)[:, np.newaxis, np.newaxis]
+                #             * np.stack([np.outer(w, w) for w in self.weights_])
+                #         )
+                #         @ (self.weights_.T @ _inv_norms)
+                #     )
+                # )
             else:
                 _grad_step = 0
 
