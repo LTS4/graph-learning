@@ -150,13 +150,14 @@ class GraphComponents(BaseEstimator):
 
         for i in range(self.max_iter):
             mc_activations = self._mc_activations()
+            dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
             # primal update
             # x1 = prox_gx(x - alpha * (op_adjx(x, dualv) + gradf_x(x, y, gz)), alpha)
             activations = self._prox_l1_activations(
                 self.activations_
                 - self.alpha
                 * (
-                    self.op_adj_activ(self.weights_, self.dual_)
+                    self.op_adj_activ(self.weights_, dual)
                     + self._grad_smoothness_activations(x, mc_activations)
                 ),
                 alpha=self.alpha,
@@ -167,7 +168,7 @@ class GraphComponents(BaseEstimator):
                 self.weights_
                 - self.alpha
                 * (
-                    self.op_adj_weights(self.activations_, self.dual_)
+                    self.op_adj_weights(self.activations_, dual)
                     + self._grad_smoothness_weights(x, mc_activations)
                 ),
                 self.alpha,
