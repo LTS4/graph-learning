@@ -1,6 +1,7 @@
 """Partially fixed component models"""
 import numpy as np
 from numpy.typing import NDArray
+
 from graph_learn.components.base_model import GraphComponents
 
 
