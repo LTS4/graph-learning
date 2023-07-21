@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Callable
+from warnings import warn
 
 import numpy as np
 from numpy.random import RandomState
@@ -24,7 +25,7 @@ class GraphDictionary(BaseEstimator):
         l1_activations: float = 0,
         *,
         max_iter: int = 50,
-        alpha: float = 1,
+        alpha: float = 1e-2,
         mc_samples: int = 100,
         tol: float = 1e-3,
         random_state: RandomState = None,
@@ -78,6 +79,25 @@ class GraphDictionary(BaseEstimator):
         self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
 
         self.converged_ = -1
+
+    def _component_pdist_sq(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+        """Compute pairwise square distances on each componend, based on activations
+
+        Args:
+            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+
+        Returns:
+            NDArray[np.float_]: Pairwise node squared distances of shape
+                (n_components, n_nodes, n_nodes)
+        """
+        # This works with continuous activations
+        pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
+        return np.stack(
+            [
+                squareform(kdiff)
+                for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
+            ]
+        )
 
     def _mc_activations(self):
         arange = np.arange(self.n_samples_)
@@ -136,6 +156,7 @@ class GraphDictionary(BaseEstimator):
 
     def _prox_l1_weights(self, weights: NDArray, alpha: float) -> NDArray:
         out = weights - alpha * self.l1_weights * self.n_samples_
+
         out[out < 0] = 0
         return out
 
@@ -174,6 +195,8 @@ class GraphDictionary(BaseEstimator):
     ) -> GraphDictionary:
         self._initialize(x)
 
+        warn("The dual objective is too weak to keep weights up", RuntimeWarning)
+
         for i in range(self.max_iter):
             mc_activations = self._mc_activations()
             dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
@@ -203,8 +226,10 @@ class GraphDictionary(BaseEstimator):
             if callback is not None:
                 callback(self, i)
 
-            if (relative_error(self.activations_, activations) < self.tol) and (
-                relative_error(self.weights_, weights) < self.tol
+            if (
+                False
+                and (relative_error(self.activations_, activations) < self.tol)
+                and (relative_error(self.weights_, weights) < self.tol)
             ):
                 self.converged_ = i
                 return self
