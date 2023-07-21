@@ -5,5 +5,5 @@ __all__ = [
     "FixedWeights",
 ]
 
-from .base_model import GraphDictionary
-from .fixed_models import FixedActivations, FixedWeights
+from graph_learn.dictionary.base_model import GraphDictionary
+from graph_learn.dictionary.fixed_models import FixedActivations, FixedWeights

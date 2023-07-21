@@ -25,9 +25,7 @@ class GraphDictionary(BaseEstimator):
         l1_activations: float = 0,
         *,
         max_iter: int = 50,
-        alpha_a: float = None,
-        alpha_w: float = None,
-        alpha_dual: float = None,
+        alpha: float = 1e-2,
         mc_samples: int = 100,
         tol: float = 1e-3,
         random_state: RandomState = None,
@@ -44,13 +42,7 @@ class GraphDictionary(BaseEstimator):
         self.l1_activations = l1_activations
 
         self.max_iter = max_iter
-
-        if not (alpha_a or alpha_w):
-            raise ValueError("Need at least one of alpha_a or alpha_w")
-
-        self.alpha_a = alpha_a or alpha_w
-        self.alpha_w = alpha_w or alpha_a
-        self.alpha_dual = alpha_dual or np.sqrt(self.alpha_a * self.alpha_w)
+        self.alpha = alpha
         self.mc_samples = mc_samples
         self.tol = tol
 
@@ -84,34 +76,6 @@ class GraphDictionary(BaseEstimator):
 
         self.weights_ = np.ones((self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2))
         self.activations_ = np.ones((self.n_components, self.n_samples_))
-
-        if self.init_strategy == "uniform":
-            if self.weight_prior is not None and self.activation_prior is not None:
-                raise ValueError("Need one free parameter for uniform initialization")
-
-            if self.weight_prior is None:
-                self.weights_ = self.random_state.uniform(
-                    size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
-                )
-            else:
-                self.weights_ *= self.weight_prior
-
-            if self.activation_prior is None:
-                self.activations_ = self.random_state.uniform(
-                    size=(self.n_components, self.n_samples_)
-                )
-            else:
-                self.activations_ *= self.activation_prior
-
-        elif self.init_strategy == "exact":
-            if self.weight_prior is not None:
-                self.weights_ *= self.weight_prior
-
-            if self.activation_prior is not None:
-                self.activations_ *= self.activation_prior
-        else:
-            raise ValueError(f"Invalid init strategy {self.init_strategy}")
-
         self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
 
         self.converged_ = -1
@@ -151,6 +115,11 @@ class GraphDictionary(BaseEstimator):
     def op_adj_activ(self, weights: NDArray, dualv: NDArray) -> NDArray:
         return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
 
+    def _prox_l1_activations(self, activations: NDArray, alpha: float) -> NDArray:
+        out = activations - alpha * self.l1_activations
+        out[out < 0] = 0
+        return out
+
     def _grad_smoothness_activations(self, x: NDArray, activation_mc: NDArray) -> NDArray:
         # TODO: check
         return np.einsum(
@@ -168,36 +137,54 @@ class GraphDictionary(BaseEstimator):
 
         return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, y)])
 
+    def _grad_smoothness_weights(self, x: NDArray, activation_mc: NDArray) -> NDArray:
+        laplacian_grad = np.einsum(
+            "ct,tn,tm,kc->knm",
+            activation_mc,
+            x,
+            x,
+            self._combinations,
+        )
+
+        return np.stack(
+            [
+                squareform(np.repeat(np.diag(gg), gg.shape[0]).reshape(gg.shape), checks=False)
+                - 2 * squareform(gg, checks=False)
+                for gg in laplacian_grad
+            ]
+        )
+
+    def _prox_l1_weights(self, weights: NDArray, alpha: float) -> NDArray:
+        out = weights - alpha * self.l1_weights * self.n_samples_
+
+        out[out < 0] = 0
+        return out
+
     def _update_activations(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
-        activations = self.activations_ - self.alpha_a * (
-            self.op_adj_activ(self.weights_, dual)  # Dual step
-            + np.einsum(
-                "ktn,tn->kt", x @ laplacian_squareform_vec(self.weights_), x
-            )  # Smoothness step
-            # + self._grad_smoothness_activations(x, mc_activations)  # Smoothness step
-            + self.l1_activations  # L1 step
+        return self._prox_l1_activations(
+            self.activations_
+            - self.alpha
+            * (
+                self.op_adj_activ(self.weights_, dual)
+                + self._grad_smoothness_activations(x, mc_activations)
+            ),
+            alpha=self.alpha,
         )
-
-        # Projection
-        activations[activations < 0] = 0
-        activations[activations > 1] = 1
-        return activations
 
     def _update_weights(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
-        # Proximal update
-        weights = self.weights_ - self.alpha_w * (
-            self.op_adj_weights(self.activations_, dual)  # Dual step
-            + self._component_pdist_sq(x) / self.n_samples_  # Smoothness step
-            + self.l1_weights  # L1 step
+        return self._prox_l1_weights(
+            self.weights_
+            - self.alpha
+            * (
+                self.op_adj_weights(self.activations_, dual)
+                + self._grad_smoothness_weights(x, mc_activations)
+            ),
+            self.alpha,
         )
-
-        # Projection
-        weights[weights < 0] = 0
-        return weights
 
     def fit(
         self,
@@ -208,26 +195,29 @@ class GraphDictionary(BaseEstimator):
     ) -> GraphDictionary:
         self._initialize(x)
 
+        warn("The dual objective is too weak to keep weights up", RuntimeWarning)
+
         for i in range(self.max_iter):
             mc_activations = self._mc_activations()
             dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
 
             # primal update
             # x1 = prox_gx(x - alpha * (op_adjx(x, dualv) + gradf_x(x, y, gz)), alpha)
-            # y1 = prox_gy(y - alpha * (op_adjy(y, dualv) + gradf_y(x, y, gz)), alpha)
             activations = self._update_activations(x, mc_activations, dual)
+
+            # y1 = prox_gy(y - alpha * (op_adjy(y, dualv) + gradf_y(x, y, gz)), alpha)
             weights = self._update_weights(x, mc_activations, dual)
 
-            # dual update
+            # # dual update
             # x_overshoot = 2 * activations - self.activations_
             y_overshoot = 2 * weights - self.weights_
 
             # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
             # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
-            self.dual_ = self.dual_ + self.alpha_dual * np.einsum(
+            self.dual_ = self.dual_ + self.alpha * np.einsum(
                 "kc,knm->cnm", self._combinations, laplacian_squareform_vec(y_overshoot)
             )
-            self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual)
+            self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha)
             # return x1, y1, z1
 
             self.activations_ = activations
@@ -236,8 +226,10 @@ class GraphDictionary(BaseEstimator):
             if callback is not None:
                 callback(self, i)
 
-            if (relative_error(self.activations_, activations) < self.tol) and (
-                relative_error(self.weights_, weights) < self.tol
+            if (
+                False
+                and (relative_error(self.activations_, activations) < self.tol)
+                and (relative_error(self.weights_, weights) < self.tol)
             ):
                 self.converged_ = i
                 return self
