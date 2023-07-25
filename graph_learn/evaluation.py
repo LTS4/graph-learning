@@ -20,7 +20,7 @@ def relative_error(y_true: NDArray[np.float_], y_pred: NDArray[np.float_]) -> fl
     """
     err_norm = np.linalg.norm(y_pred - y_true)
     if np.allclose(y_true, 0):
-        return np.inf
+        return err_norm
 
     return err_norm / np.linalg.norm(y_true)
 
