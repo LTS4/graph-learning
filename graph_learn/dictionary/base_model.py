@@ -173,11 +173,10 @@ class GraphDictionary(BaseEstimator):
     ) -> NDArray[np.float_]:
         activations = self.activations_ - self.alpha_a * (
             self.op_adj_activ(self.weights_, dual)  # Dual step
-            + np.einsum(
-                "ktn,tn->kt", x @ laplacian_squareform_vec(self.weights_), x
-            )  # Smoothness step
+            + np.einsum("ktn,tn->kt", x @ laplacian_squareform_vec(self.weights_), x)
+            / self.n_samples_  # Smoothness step
             # + self._grad_smoothness_activations(x, mc_activations)  # Smoothness step
-            + self.l1_activations  # L1 step
+            + self.l1_activations / self.n_samples_  # L1 step
         )
 
         # Projection
@@ -220,15 +219,20 @@ class GraphDictionary(BaseEstimator):
 
             # dual update
             # x_overshoot = 2 * activations - self.activations_
-            y_overshoot = 2 * weights - self.weights_
+            weights_overshoot = 2 * weights - self.weights_
 
             # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
             # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
             self.dual_ = self.dual_ + self.alpha_dual * np.einsum(
-                "kc,knm->cnm", self._combinations, laplacian_squareform_vec(y_overshoot)
+                "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
             )
-            self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual)
+            self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual / self.n_samples_)
             # return x1, y1, z1
+
+            if (relative_error(self.activations_.ravel(), activations.ravel()) < self.tol) and (
+                relative_error(self.weights_.ravel(), weights.ravel()) < self.tol
+            ):
+                self.converged_ = i
 
             self.activations_ = activations
             self.weights_ = weights
@@ -236,10 +240,7 @@ class GraphDictionary(BaseEstimator):
             if callback is not None:
                 callback(self, i)
 
-            if (relative_error(self.activations_, activations) < self.tol) and (
-                relative_error(self.weights_, weights) < self.tol
-            ):
-                self.converged_ = i
+            if self.converged_ > 0:
                 return self
 
         return self
