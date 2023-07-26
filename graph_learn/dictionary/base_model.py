@@ -185,7 +185,7 @@ class GraphDictionary(BaseEstimator):
         return activations
 
     def _update_weights(
-        self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
+        self, x: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         # Proximal update
         weights = self.weights_ - self.alpha_w * (
@@ -198,6 +198,37 @@ class GraphDictionary(BaseEstimator):
         weights[weights < 0] = 0
         return weights
 
+    def _fit_step(self, x: NDArray[np.float_]) -> bool:
+        mc_activations = self._mc_activations()
+        dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
+
+        # primal update
+        # x1 = prox_gx(x - alpha * (op_adjx(x, dualv) + gradf_x(x, y, gz)), alpha)
+        # y1 = prox_gy(y - alpha * (op_adjy(y, dualv) + gradf_y(x, y, gz)), alpha)
+        activations = self._update_activations(x, mc_activations, dual)
+        weights = self._update_weights(x, dual)
+
+        # dual update
+        # x_overshoot = 2 * activations - self.activations_
+        weights_overshoot = 2 * weights - self.weights_
+
+        # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
+        # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
+        self.dual_ = self.dual_ + self.alpha_dual * np.einsum(
+            "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
+        )
+        self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual / self.n_samples_)
+        # return x1, y1, z1
+
+        converged = (
+            relative_error(self.activations_.ravel(), activations.ravel()) < self.tol
+        ) and (relative_error(self.weights_.ravel(), weights.ravel()) < self.tol)
+
+        self.activations_ = activations
+        self.weights_ = weights
+
+        return converged
+
     def fit(
         self,
         x: NDArray[np.float_],
@@ -208,39 +239,18 @@ class GraphDictionary(BaseEstimator):
         self._initialize(x)
 
         for i in range(self.max_iter):
-            mc_activations = self._mc_activations()
-            dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
+            try:
+                if self._fit_step(x):
+                    self.converged_ = i
 
-            # primal update
-            # x1 = prox_gx(x - alpha * (op_adjx(x, dualv) + gradf_x(x, y, gz)), alpha)
-            # y1 = prox_gy(y - alpha * (op_adjy(y, dualv) + gradf_y(x, y, gz)), alpha)
-            activations = self._update_activations(x, mc_activations, dual)
-            weights = self._update_weights(x, mc_activations, dual)
+                if callback is not None:
+                    callback(self, i)
 
-            # dual update
-            # x_overshoot = 2 * activations - self.activations_
-            weights_overshoot = 2 * weights - self.weights_
+                if self.converged_ > 0:
+                    return self
 
-            # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
-            # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
-            self.dual_ = self.dual_ + self.alpha_dual * np.einsum(
-                "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
-            )
-            self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual / self.n_samples_)
-            # return x1, y1, z1
-
-            if (relative_error(self.activations_.ravel(), activations.ravel()) < self.tol) and (
-                relative_error(self.weights_.ravel(), weights.ravel()) < self.tol
-            ):
-                self.converged_ = i
-
-            self.activations_ = activations
-            self.weights_ = weights
-
-            if callback is not None:
-                callback(self, i)
-
-            if self.converged_ > 0:
+            except KeyboardInterrupt:
+                warn("Keyboard interrupt, stopping early")
                 return self
 
         return self
