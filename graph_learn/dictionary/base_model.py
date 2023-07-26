@@ -163,10 +163,12 @@ class GraphDictionary(BaseEstimator):
         )
 
     def op_adj_weights(self, activations: NDArray, dualv: NDArray) -> NDArray:
-        y = np.stack([np.diag(y) - y for y in dualv])
-        y += np.transpose(y, (0, 2, 1))
+        partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
+        partial += np.transpose(partial, (0, 2, 1))
 
-        return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, y)])
+        return np.stack(
+            [squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)]
+        )
 
     def _update_activations(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
