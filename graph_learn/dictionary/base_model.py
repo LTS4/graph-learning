@@ -21,17 +21,6 @@ from graph_learn.utils import (
 )
 
 
-def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
-    partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
-    partial += np.transpose(partial, (0, 2, 1))
-
-    return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
-
-
-def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
-    return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
-
-
 class GraphDictionary(BaseEstimator):
     """Graph components learning original method"""
 
