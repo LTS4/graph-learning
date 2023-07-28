@@ -15,6 +15,17 @@ from graph_learn.components.utils import laplacian_squareform_vec, prox_gdet_sta
 from graph_learn.evaluation import relative_error
 
 
+def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
+    partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
+    partial += np.transpose(partial, (0, 2, 1))
+
+    return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
+
+
+def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
+    return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
+
+
 class GraphDictionary(BaseEstimator):
     """Graph components learning original method"""
 
@@ -48,9 +59,20 @@ class GraphDictionary(BaseEstimator):
         if not (alpha_a or alpha_w):
             raise ValueError("Need at least one of alpha_a or alpha_w")
 
-        self.alpha_a = alpha_a or alpha_w
-        self.alpha_w = alpha_w or alpha_a
-        self.alpha_dual = alpha_dual or np.sqrt(self.alpha_a * self.alpha_w)
+        if alpha_a is None:
+            self.alpha_a = alpha_w
+        else:
+            self.alpha_a = alpha_a
+        if alpha_w is None:
+            self.alpha_w = alpha_a
+        else:
+            self.alpha_w = alpha_w
+
+        if alpha_dual is None:
+            self.alpha_dual = np.sqrt(self.alpha_a * self.alpha_w)
+        else:
+            self.alpha_dual = alpha_dual
+
         self.mc_samples = mc_samples
         self.tol = tol
 
@@ -148,9 +170,6 @@ class GraphDictionary(BaseEstimator):
 
         return out / self.mc_samples
 
-    def op_adj_activ(self, weights: NDArray, dualv: NDArray) -> NDArray:
-        return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
-
     def _grad_smoothness_activations(self, x: NDArray, activation_mc: NDArray) -> NDArray:
         # TODO: check
         return np.einsum(
@@ -162,19 +181,11 @@ class GraphDictionary(BaseEstimator):
             self._combinations,
         )
 
-    def op_adj_weights(self, activations: NDArray, dualv: NDArray) -> NDArray:
-        partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
-        partial += np.transpose(partial, (0, 2, 1))
-
-        return np.stack(
-            [squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)]
-        )
-
     def _update_activations(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         activations = self.activations_ - self.alpha_a * (
-            self.op_adj_activ(self.weights_, dual)  # Dual step
+            op_adj_activations(self.weights_, dual)  # Dual step
             + np.einsum("ktn,tn->kt", x @ laplacian_squareform_vec(self.weights_), x)
             / self.n_samples_  # Smoothness step
             # + self._grad_smoothness_activations(x, mc_activations)  # Smoothness step
@@ -189,10 +200,11 @@ class GraphDictionary(BaseEstimator):
     def _update_weights(
         self, x: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
+        smoothness = self._component_pdist_sq(x) / self.n_samples_
         # Proximal update
         weights = self.weights_ - self.alpha_w * (
-            self.op_adj_weights(self.activations_, dual)  # Dual step
-            + self._component_pdist_sq(x) / self.n_samples_  # Smoothness step
+            op_adj_weights(self.activations_, dual)  # Dual step
+            + smoothness  # Smoothness step
             + self.l1_weights  # L1 step
         )
 
