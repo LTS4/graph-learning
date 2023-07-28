@@ -43,9 +43,14 @@ laplacian_squareform_vec = np.vectorize(
 
 def laplacian_squareform_adj(laplacian: NDArray[np.float_]) -> NDArray[np.float_]:
     """Adjoint of laplacian squareform"""
-    out = -2 * laplacian
-    neg_degs = np.sum(laplacian - np.diag(np.diag(laplacian)), axis=0)
-    return squareform(out - neg_degs[:, np.newaxis] - neg_degs[np.newaxis, :], checks=False)
+    # out = -2 * laplacian
+    # neg_degs = np.sum(laplacian - np.diag(np.diag(laplacian)), axis=0)
+    # return squareform(out - neg_degs[:, np.newaxis] - neg_degs[np.newaxis, :], checks=False)
+    diag = np.diag(laplacian)
+    return squareform(
+        -laplacian - laplacian.T + diag[:, np.newaxis] + diag[np.newaxis, :],
+        checks=False,
+    )
 
 
 laplacian_squareform_adj_vec = np.vectorize(
