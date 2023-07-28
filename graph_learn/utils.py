@@ -1,10 +1,8 @@
-"""Optimization functions for PDS in Compponets model"""
+"""Utility functions for Laplacians manipulation"""
 import numpy as np
 from numpy.linalg import eigh
 from numpy.typing import NDArray
 from scipy.spatial.distance import squareform
-
-from graph_learn.utils import laplacian_squareform
 
 
 def relaxed_update(
@@ -34,6 +32,20 @@ def relaxed_update(
             rel_norms[i] = np.inf
 
     return out, rel_norms
+
+
+def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
+    """Get Laplacians from vectorized edge weights
+
+    Args:
+        x (NDArray[np.float]): Array of vectorized edge weights of shape (n_edges,)
+
+    Returns:
+        NDArray[np.float_]: Laplacian array of shape (n_nodes, n_nodes)
+    """
+    lapl = -squareform(x)
+    np.fill_diagonal(lapl, -lapl.sum(axis=-1))
+    return lapl
 
 
 laplacian_squareform_vec = np.vectorize(
