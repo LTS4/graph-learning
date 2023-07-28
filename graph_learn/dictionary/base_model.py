@@ -10,14 +10,15 @@ from numpy.typing import NDArray
 from scipy.spatial.distance import squareform
 from sklearn.base import BaseEstimator
 
+from graph_learn.evaluation import relative_error
+
 # from graph_learn import OptimizationError
-from graph_learn.components.utils import (
+from graph_learn.utils import (
     laplacian_squareform_vec,
     op_adj_activations,
     op_adj_weights,
     prox_gdet_star,
 )
-from graph_learn.evaluation import relative_error
 
 
 def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
