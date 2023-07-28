@@ -85,3 +85,14 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
     # Note that the norm of the eigenvector is sqrt(n_nodes)
     return dvar + np.sqrt(sigma) / _shape[1]
+
+
+def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
+    partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
+    partial += np.transpose(partial, (0, 2, 1))
+
+    return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
+
+
+def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
+    return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))

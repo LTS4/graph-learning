@@ -11,7 +11,12 @@ from scipy.spatial.distance import squareform
 from sklearn.base import BaseEstimator
 
 # from graph_learn import OptimizationError
-from graph_learn.components.utils import laplacian_squareform_vec, prox_gdet_star
+from graph_learn.components.utils import (
+    laplacian_squareform_vec,
+    op_adj_activations,
+    op_adj_weights,
+    prox_gdet_star,
+)
 from graph_learn.evaluation import relative_error
 
 
