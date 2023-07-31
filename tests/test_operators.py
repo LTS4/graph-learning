@@ -8,8 +8,10 @@ from graph_learn.operators import (
     laplacian_squareform_adj,
     laplacian_squareform_adj_vec,
     laplacian_squareform_vec,
+    op_activations_norm,
     op_adj_activations,
     op_adj_weights,
+    op_weights_norm,
 )
 
 ################################################################################
@@ -119,7 +121,7 @@ def test_operator_norm_weights():
         activations = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
 
-        estimate = 2 * n_nodes * svds(activations, k=1, return_singular_vectors=False)[0] ** 2
+        estimate = op_weights_norm(activations=activations, n_nodes=n_nodes)
 
         for _ in range(100):
             weights = weights / np.linalg.norm(weights)
@@ -147,7 +149,7 @@ def test_operator_norm_activations():
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
 
         lapl = laplacian_squareform_vec(weights)
-        estimate = svds(lapl.reshape(n_components, -1), k=1, return_singular_vectors=False)[0] ** 2
+        estimate = op_activations_norm(lapl)
 
         for _ in range(200):
             activations = activations / np.linalg.norm(activations)

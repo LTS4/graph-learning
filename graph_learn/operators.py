@@ -2,6 +2,7 @@
 import numpy as np
 from numpy.linalg import eigh
 from numpy.typing import NDArray
+from scipy.sparse.linalg import svds
 from scipy.spatial.distance import squareform
 
 
@@ -106,5 +107,13 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
 
 
+def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
+    return 2 * n_nodes * svds(activations, k=1, return_singular_vectors=False)[0] ** 2
+
+
 def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
     return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
+
+
+def op_activations_norm(lapl: NDArray) -> float:
+    return svds(lapl.reshape(lapl.shape[0], -1), k=1, return_singular_vectors=False)[0] ** 2
