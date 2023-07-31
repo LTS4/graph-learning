@@ -5,6 +5,7 @@ from itertools import product
 import numpy as np
 import pytest
 from numpy.random import default_rng
+from scipy.sparse.linalg import svds
 
 from graph_learn.operators import (
     dictionary_smoothness,
