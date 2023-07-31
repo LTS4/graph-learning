@@ -13,7 +13,7 @@ from sklearn.base import BaseEstimator
 
 from graph_learn import OptimizationError
 from graph_learn.evaluation import relative_error
-from graph_learn.utils import (
+from graph_learn.operators import (
     laplacian_squareform_adj_vec,
     laplacian_squareform_vec,
     prox_gdet_star,
