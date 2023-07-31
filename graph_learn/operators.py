@@ -1,4 +1,4 @@
-"""Utility functions for Laplacians manipulation"""
+"""Operators for Laplacians and activations manipulation"""
 import numpy as np
 from numpy.linalg import eigh
 from numpy.typing import NDArray

@@ -3,7 +3,7 @@ import numpy as np
 from numpy.random import Generator, default_rng
 from numpy.typing import NDArray
 
-from graph_learn.utils import laplacian_squareform
+from graph_learn.operators import laplacian_squareform
 
 
 def sample_uniform_laplacian(n_nodes: int, seed: int | Generator = None) -> NDArray:

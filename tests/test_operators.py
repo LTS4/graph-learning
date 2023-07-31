@@ -1,8 +1,9 @@
 """Tests for bilinear operators and adjoints"""
 import numpy as np
 from numpy.random import default_rng
+from scipy.sparse.linalg import svds
 
-from graph_learn.utils import (
+from graph_learn.operators import (
     laplacian_squareform,
     laplacian_squareform_adj,
     laplacian_squareform_adj_vec,
@@ -80,25 +81,82 @@ def test_op_adj_activations():
         )
 
 
+def test_full_adjoint():
+    for seed in range(1000):
+        rng = default_rng(seed)
+        n_components = rng.integers(1, 10)
+        n_nodes = rng.integers(20, 100)
+        n_samples = rng.integers(100, 1000)
+
+        activations = rng.standard_normal((n_components, n_samples))
+        weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
+        dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
+
+        prod1 = np.sum(
+            dual * np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights))
+        )
+        prod2 = 0.5 * (
+            np.sum(weights * op_adj_weights(activations, dual))
+            + np.sum(activations * op_adj_activations(weights, dual))
+        )
+
+        assert np.allclose(prod1, prod2)
+
+
 ################################################################################
 # Operator norm tests
 
 
 def test_operator_norm_weights():
-    """Verify that the operator norm of the weights is correct"""
-    n_samples = 200
-    n_nodes = 33
-    n_components = 13
+    """Verify that the operator norm, wrt weights is correct"""
 
-    for seed in range(1000):
+    for seed in range(10):
         rng = default_rng(seed)
-        activations = rng.integers(n_components, n_samples)
-        weights = rng.integers(n_components, (n_nodes * (n_nodes - 1)) // 2)
-        dual = np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights))
+        n_components = rng.integers(1, 10)
+        n_nodes = rng.integers(20, 100)
+        n_samples = rng.integers(100, 1000)
 
-        assert np.allclose(
-            2
-            * (np.linalg.norm(weights.ravel(), ord=1) * np.linalg.norm(activations.ravel(), ord=2))
-            ** 2,
-            np.linalg.norm(dual.ravel(), ord=2) ** 2,
-        )
+        activations = rng.standard_normal((n_components, n_samples))
+        weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
+
+        estimate = 2 * n_nodes * svds(activations, k=1, return_singular_vectors=False)[0] ** 2
+
+        for _ in range(100):
+            weights = weights / np.linalg.norm(weights)
+            _weights = op_adj_weights(
+                activations,
+                np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights)),
+            )
+
+            alpha = np.mean(_weights / weights)
+            weights = _weights
+
+        assert np.isclose(estimate, alpha, rtol=1e-2)
+
+
+def test_operator_norm_activations():
+    """Verify that the operator norm, wrt activations is correct"""
+
+    for seed in range(10):
+        rng = default_rng(seed)
+        n_components = rng.integers(1, 10)
+        n_nodes = rng.integers(20, 100)
+        n_samples = rng.integers(100, 1000)
+
+        activations = rng.standard_normal((n_components, n_samples))
+        weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
+
+        lapl = laplacian_squareform_vec(weights)
+        estimate = svds(lapl.reshape(n_components, -1), k=1, return_singular_vectors=False)[0] ** 2
+
+        for _ in range(200):
+            activations = activations / np.linalg.norm(activations)
+            _activations = op_adj_activations(
+                weights,
+                np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights)),
+            )
+
+            alpha = np.mean(_activations / activations)
+            activations = _activations
+
+        assert np.isclose(estimate, alpha, rtol=1e-2)
