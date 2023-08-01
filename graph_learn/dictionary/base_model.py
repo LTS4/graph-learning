@@ -15,8 +15,10 @@ from graph_learn.evaluation import relative_error
 # from graph_learn import OptimizationError
 from graph_learn.operators import (
     laplacian_squareform_vec,
+    op_activations_norm,
     op_adj_activations,
     op_adj_weights,
+    op_weights_norm,
     prox_gdet_star,
 )
 
@@ -179,10 +181,11 @@ class GraphDictionary(BaseEstimator):
     def _update_activations(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
-        activations = self.activations_ - self.alpha_a * (
+        laplacians = laplacian_squareform_vec(self.weights_)
+        op_norm = op_activations_norm(lapl=laplacians)
+        activations = self.activations_ - self.alpha_a / op_norm * (
             op_adj_activations(self.weights_, dual)  # Dual step
-            + np.einsum("ktn,tn->kt", x @ laplacian_squareform_vec(self.weights_), x)
-            / self.n_samples_  # Smoothness step
+            + np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_samples_  # Smoothness step
             # + self._grad_smoothness_activations(x, mc_activations)  # Smoothness step
             + self.l1_activations / self.n_samples_  # L1 step
         )
@@ -195,9 +198,10 @@ class GraphDictionary(BaseEstimator):
     def _update_weights(
         self, x: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
+        op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         smoothness = self._component_pdist_sq(x) / self.n_samples_
         # Proximal update
-        weights = self.weights_ - self.alpha_w * (
+        weights = self.weights_ - self.alpha_w / op_norm * (
             op_adj_weights(self.activations_, dual)  # Dual step
             + smoothness  # Smoothness step
             + self.l1_weights  # L1 step
@@ -223,6 +227,7 @@ class GraphDictionary(BaseEstimator):
 
         # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
+        op_norm =
         self.dual_ = self.dual_ + self.alpha_dual * np.einsum(
             "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
         )
