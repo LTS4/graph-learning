@@ -33,9 +33,9 @@ class GraphDictionary(BaseEstimator):
         l1_activations: float = 0,
         *,
         max_iter: int = 50,
-        alpha_a: float = None,
-        alpha_w: float = None,
-        alpha_dual: float = None,
+        step_a: float = None,
+        step_w: float = None,
+        step_dual: float = None,
         mc_samples: int = 100,
         tol: float = 1e-3,
         random_state: RandomState = None,
@@ -53,22 +53,22 @@ class GraphDictionary(BaseEstimator):
 
         self.max_iter = max_iter
 
-        if not (alpha_a or alpha_w):
-            alpha_a = alpha_w = 1
+        if not (step_a or step_w):
+            step_a = step_w = 1
 
-        if alpha_a is None:
-            self.alpha_a = alpha_w
+        if step_a is None:
+            self.step_a = step_w
         else:
-            self.alpha_a = alpha_a
-        if alpha_w is None:
-            self.alpha_w = alpha_a
+            self.step_a = step_a
+        if step_w is None:
+            self.step_w = step_a
         else:
-            self.alpha_w = alpha_w
+            self.step_w = step_w
 
-        if alpha_dual is None:
-            self.alpha_dual = np.sqrt(self.alpha_a * self.alpha_w)
+        if step_dual is None:
+            self.step_dual = np.sqrt(self.step_a * self.step_w)
         else:
-            self.alpha_dual = alpha_dual
+            self.step_dual = step_dual
 
         self.mc_samples = mc_samples
         self.tol = tol
@@ -183,7 +183,7 @@ class GraphDictionary(BaseEstimator):
     ) -> NDArray[np.float_]:
         laplacians = laplacian_squareform_vec(self.weights_)
         op_norm = op_activations_norm(lapl=laplacians)
-        activations = self.activations_ - self.alpha_a / op_norm * (
+        activations = self.activations_ - self.step_a / op_norm * (
             op_adj_activations(self.weights_, dual)  # Dual step
             + np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_samples_  # Smoothness step
             # + self._grad_smoothness_activations(x, mc_activations)  # Smoothness step
@@ -201,7 +201,7 @@ class GraphDictionary(BaseEstimator):
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         smoothness = self._component_pdist_sq(x) / self.n_samples_
         # Proximal update
-        weights = self.weights_ - self.alpha_w / op_norm * (
+        weights = self.weights_ - self.step_w / op_norm * (
             op_adj_weights(self.activations_, dual)  # Dual step
             + smoothness  # Smoothness step
             + self.l1_weights  # L1 step
@@ -216,8 +216,8 @@ class GraphDictionary(BaseEstimator):
         dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
 
         # primal update
-        # x1 = prox_gx(x - alpha * (op_adjx(x, dualv) + gradf_x(x, y, gz)), alpha)
-        # y1 = prox_gy(y - alpha * (op_adjy(y, dualv) + gradf_y(x, y, gz)), alpha)
+        # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
+        # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
         activations = self._update_activations(x, mc_activations, dual)
         weights = self._update_weights(x, dual)
 
@@ -225,15 +225,15 @@ class GraphDictionary(BaseEstimator):
         # x_overshoot = 2 * activations - self.activations_
         weights_overshoot = 2 * weights - self.weights_
 
-        # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
-        # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
+        # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
+        # z1 -= step * prox_h(z1 / step, 1 / step)
         op_norm = op_weights_norm(
             activations=self.activations_, n_nodes=self.n_nodes_
         ) * op_activations_norm(lapl=laplacian_squareform_vec(weights_overshoot))
-        self.dual_ = self.dual_ + self.alpha_dual / op_norm * np.einsum(
+        self.dual_ = self.dual_ + self.step_dual / op_norm * np.einsum(
             "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
         )
-        self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual / op_norm / self.n_samples_)
+        self.dual_ = prox_gdet_star(self.dual_, sigma=self.step_dual / op_norm / self.n_samples_)
         # return x1, y1, z1
 
         converged = (
