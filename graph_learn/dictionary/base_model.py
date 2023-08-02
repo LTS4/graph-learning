@@ -227,11 +227,13 @@ class GraphDictionary(BaseEstimator):
 
         # z1 = dualv + alpha * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= alpha * prox_h(z1 / alpha, 1 / alpha)
-        op_norm =
-        self.dual_ = self.dual_ + self.alpha_dual * np.einsum(
+        op_norm = op_weights_norm(
+            activations=self.activations_, n_nodes=self.n_nodes_
+        ) * op_activations_norm(lapl=laplacian_squareform_vec(weights_overshoot))
+        self.dual_ = self.dual_ + self.alpha_dual / op_norm * np.einsum(
             "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
         )
-        self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual / self.n_samples_)
+        self.dual_ = prox_gdet_star(self.dual_, sigma=self.alpha_dual / op_norm / self.n_samples_)
         # return x1, y1, z1
 
         converged = (
