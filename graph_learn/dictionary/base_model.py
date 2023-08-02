@@ -54,7 +54,7 @@ class GraphDictionary(BaseEstimator):
         self.max_iter = max_iter
 
         if not (alpha_a or alpha_w):
-            raise ValueError("Need at least one of alpha_a or alpha_w")
+            alpha_a = alpha_w = 1
 
         if alpha_a is None:
             self.alpha_a = alpha_w
