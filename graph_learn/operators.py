@@ -108,6 +108,8 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
 
 
 def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
+    if 1 in activations.shape:
+        return np.sqrt(2 * n_nodes * np.sum(activations**2))
     return np.sqrt(2 * n_nodes) * svds(activations, k=1, return_singular_vectors=False)[0]
 
 
@@ -116,4 +118,6 @@ def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
 
 
 def op_activations_norm(lapl: NDArray) -> float:
+    if lapl.shape[0] == 1:
+        return np.sqrt(np.sum(lapl**2))
     return svds(lapl.reshape(lapl.shape[0], -1), k=1, return_singular_vectors=False)[0]
