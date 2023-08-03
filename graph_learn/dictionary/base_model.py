@@ -31,6 +31,7 @@ class GraphDictionary(BaseEstimator):
         n_components=1,
         l1_weights: float = 1,
         l1_activations: float = 0,
+        log_activations: float = 0,
         *,
         max_iter: int = 50,
         step_a: float = None,
@@ -50,6 +51,7 @@ class GraphDictionary(BaseEstimator):
         self.l1_weights = l1_weights
         # self.ortho_weights = ortho_weights
         self.l1_activations = l1_activations
+        self.log_activations = log_activations
 
         self.max_iter = max_iter
 
@@ -182,12 +184,21 @@ class GraphDictionary(BaseEstimator):
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         laplacians = laplacian_squareform_vec(self.weights_)
-        op_norm = op_activations_norm(lapl=laplacians)
-        activations = self.activations_ - self.step_a / op_norm * (
-            op_adj_activations(self.weights_, dual)  # Dual step
-            + np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_samples_  # Smoothness step
-            # + self._grad_smoothness_activations(x, mc_activations)  # Smoothness step
-            + self.l1_activations / self.n_samples_  # L1 step
+        step_size = self.step_a / op_activations_norm(lapl=laplacians)
+
+        # Dual step
+        activations = self.activations_ - step_size * op_adj_activations(self.weights_, dual)
+
+        step_size /= self.n_samples_
+
+        if self.log_activations > 0:
+            grad_step = -self.log_activations / self.activations_.sum(axis=0, keepdims=True)
+        else:
+            grad_step = 0
+
+        # Proximal and gradient step
+        activations -= step_size * (
+            np.einsum("ktn,tn->kt", x @ laplacians, x) + self.l1_activations + grad_step
         )
 
         # Projection
