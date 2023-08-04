@@ -169,24 +169,16 @@ class GraphDictionary(BaseEstimator):
 
         return out / self.mc_samples
 
-    def _grad_smoothness_activations(self, x: NDArray, activation_mc: NDArray) -> NDArray:
-        # TODO: check
-        return np.einsum(
-            "ct,tn,tm,knm,kc->kt",
-            activation_mc,
-            x,
-            x,
-            laplacian_squareform_vec(self.weights_),
-            self._combinations,
-        )
-
     def _update_activations(
-        self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
+        self, x: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         laplacians = laplacian_squareform_vec(self.weights_)
         step_size = self.step_a / op_activations_norm(lapl=laplacians)
 
         # Dual step
+        # TODO: consider how to include dual contribution from all combinations using one activation
+        # In partiualr, here I have one dual for each sample. it might be better to get the contribution of the smoothness from each combination
+        # this translates in using the mc_activations after op_adj_activations
         activations = self.activations_ - step_size * op_adj_activations(self.weights_, dual)
 
         step_size /= self.n_samples_
@@ -229,7 +221,7 @@ class GraphDictionary(BaseEstimator):
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
-        activations = self._update_activations(x, mc_activations, dual)
+        activations = self._update_activations(x, dual)
         weights = self._update_weights(x, dual)
 
         # dual update
