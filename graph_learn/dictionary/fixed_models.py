@@ -60,5 +60,5 @@ class FixedActivations(GraphDictionary):
                 f"Activation prior must be real number or a numpy array, got {type(self.activation_prior)}"
             )
 
-    def _update_activations(self, x: NDArray, mc_activations: NDArray, dual: NDArray) -> NDArray:
+    def _update_activations(self, x: NDArray, dual: NDArray) -> NDArray:
         return self.activations_
