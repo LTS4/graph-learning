@@ -1,6 +1,7 @@
 """Graph components learning original method"""
 from __future__ import annotations
 
+from time import time
 from typing import Callable
 from warnings import warn
 
@@ -99,6 +100,7 @@ class GraphDictionary(BaseEstimator):
         self.scale_: float
         self.converged_: int
         self.history_: dict[int, dict[str, int]]
+        self.fit_time_: float
 
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
@@ -136,6 +138,7 @@ class GraphDictionary(BaseEstimator):
         self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
 
         self.converged_ = -1
+        self.fit_time_ = -1
 
     def _component_pdist_sq(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Compute pairwise square distances on each componend, based on activations
@@ -170,16 +173,16 @@ class GraphDictionary(BaseEstimator):
         return out / self.mc_samples
 
     def _update_activations(
-        self, x: NDArray[np.float_], dual: NDArray[np.float_]
+        self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         laplacians = laplacian_squareform_vec(self.weights_)
         step_size = self.step_a / op_activations_norm(lapl=laplacians)
 
         # Dual step
-        # TODO: consider how to include dual contribution from all combinations using one activation
-        # In partiualr, here I have one dual for each sample. it might be better to get the contribution of the smoothness from each combination
-        # this translates in using the mc_activations after op_adj_activations
-        activations = self.activations_ - step_size * op_adj_activations(self.weights_, dual)
+        # We apply the MC after the adjoint as n_samples >> n_combinantions
+        activations = (
+            self.activations_ - step_size * op_adj_activations(self.weights_, dual) @ mc_activations
+        )
 
         step_size /= self.n_samples_
 
@@ -221,7 +224,7 @@ class GraphDictionary(BaseEstimator):
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
-        activations = self._update_activations(x, dual)
+        activations = self._update_activations(x, mc_activations=mc_activations, dual=self.dual_)
         weights = self._update_weights(x, dual)
 
         # dual update
@@ -257,6 +260,7 @@ class GraphDictionary(BaseEstimator):
     ) -> GraphDictionary:
         self._initialize(x)
 
+        start = time()
         for i in range(self.max_iter):
             try:
                 if self._fit_step(x):
@@ -270,6 +274,8 @@ class GraphDictionary(BaseEstimator):
 
             except KeyboardInterrupt:
                 warn("Keyboard interrupt, stopping early")
-                return self
+                break
+
+        self.fit_time_ = time() - start
 
         return self
