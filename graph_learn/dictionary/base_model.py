@@ -34,11 +34,11 @@ class GraphDictionary(BaseEstimator):
         l1_activations: float = 0,
         log_activations: float = 0,
         *,
-        max_iter: int = 50,
+        max_iter: int = 1000,
         step_a: float = None,
         step_w: float = None,
         step_dual: float = None,
-        mc_samples: int = 100,
+        mc_samples: int = 1000,
         tol: float = 1e-3,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
@@ -202,13 +202,13 @@ class GraphDictionary(BaseEstimator):
         return activations
 
     def _update_weights(
-        self, x: NDArray[np.float_], dual: NDArray[np.float_]
+        self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         smoothness = self._component_pdist_sq(x) / self.n_samples_
         # Proximal update
         weights = self.weights_ - self.step_w / op_norm * (
-            op_adj_weights(self.activations_, dual)  # Dual step
+            op_adj_weights(self.activations_ @ mc_activations.T, dual)  # Dual step
             + smoothness  # Smoothness step
             + self.l1_weights  # L1 step
         )
@@ -219,13 +219,12 @@ class GraphDictionary(BaseEstimator):
 
     def _fit_step(self, x: NDArray[np.float_]) -> bool:
         mc_activations = self._mc_activations()
-        dual = np.einsum("ct,cnm->tnm", mc_activations, self.dual_)
 
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
         activations = self._update_activations(x, mc_activations=mc_activations, dual=self.dual_)
-        weights = self._update_weights(x, dual)
+        weights = self._update_weights(x, mc_activations=mc_activations, dual=self.dual_)
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
@@ -270,7 +269,7 @@ class GraphDictionary(BaseEstimator):
                     callback(self, i)
 
                 if self.converged_ > 0:
-                    return self
+                    break
 
             except KeyboardInterrupt:
                 warn("Keyboard interrupt, stopping early")
