@@ -31,7 +31,7 @@ class FixedWeights(GraphDictionary):
                 f"Weight prior must be a real number or a numpy array, got {type(self.activation_prior)}"
             )
 
-    def _update_weights(self, x: NDArray, dual: NDArray) -> NDArray:
+    def _update_weights(self, *_args, **_kwargs) -> NDArray:
         return self.weights_
 
 
@@ -60,5 +60,5 @@ class FixedActivations(GraphDictionary):
                 f"Activation prior must be real number or a numpy array, got {type(self.activation_prior)}"
             )
 
-    def _update_activations(self, x: NDArray, dual: NDArray) -> NDArray:
+    def _update_activations(self, *_args, **_kwargs) -> NDArray:
         return self.activations_
