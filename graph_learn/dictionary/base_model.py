@@ -30,8 +30,9 @@ class GraphDictionary(BaseEstimator):
     def __init__(
         self,
         n_components=1,
-        l1_weights: float = 1,
+        l1_weights: float = 0,
         l1_activations: float = 0,
+        ortho_weights: float = 0,
         log_activations: float = 0,
         *,
         max_iter: int = 1000,
@@ -50,7 +51,7 @@ class GraphDictionary(BaseEstimator):
 
         self.n_components = n_components
         self.l1_weights = l1_weights
-        # self.ortho_weights = ortho_weights
+        self.ortho_weights = ortho_weights
         self.l1_activations = l1_activations
         self.log_activations = log_activations
 
@@ -206,9 +207,20 @@ class GraphDictionary(BaseEstimator):
     ) -> NDArray[np.float_]:
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         smoothness = self._component_pdist_sq(x) / self.n_samples_
+
+        if self.ortho_weights > 0:
+            # grad_step = (
+            #     np.ones((self.n_components, 1)) - np.eye(self.n_components)
+            # ) @ self.weights_
+            grad_step = self.weights_.sum(0, keepdims=True) - self.weights_
+            grad_step *= self.ortho_weights
+        else:
+            grad_step = 0
+
         # Proximal update
         weights = self.weights_ - self.step_w / op_norm * (
             op_adj_weights(self.activations_ @ mc_activations.T, dual)  # Dual step
+            + grad_step
             + smoothness  # Smoothness step
             + self.l1_weights  # L1 step
         )
