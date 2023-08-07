@@ -205,6 +205,18 @@ class GraphDictionary(BaseEstimator):
     def _update_weights(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
+        """Update the weights of the model
+
+        Args:
+            x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
+            mc_activations (NDArray[np.float_]): Monte-Carlo probabilities of combinations
+                for each sample. Array of shape (2**n_components, n_samples)
+            dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
+                of shape (2**n_components, n_nodes, n_nodes)
+
+        Returns:
+            NDArray[np.float_]: updated weights of shape (n_components, (n_nodes**2 - n_nodes) // 2)
+        """
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         smoothness = self._component_pdist_sq(x) / self.n_samples_
 
