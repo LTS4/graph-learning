@@ -101,6 +101,15 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
 
 
 def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
+    """Compute the adjoint of the bilinear inst-Laplacian operator wrt weights
+
+    Args:
+        activations (NDArray): Array of activations of shape (n_components, n_samples)
+        dualv (NDArray): Instantaneous Laplacians, of shape (n_samples, n_nodes, n_nodes)
+
+    Returns:
+        NDArray: Dual weights of shape (n_components, n_edges)
+    """
     partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
     partial += np.transpose(partial, (0, 2, 1))
 
@@ -108,16 +117,27 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
 
 
 def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
+    """Compute the norm of the inst-Laplacian operator restricted to weights"""
     if 1 in activations.shape:
         return np.sqrt(2 * n_nodes * np.sum(activations**2))
     return np.sqrt(2 * n_nodes) * svds(activations, k=1, return_singular_vectors=False)[0]
 
 
 def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
+    """Compute the adjoint of the bilinear inst-Laplacian operator wrt activations
+
+    Args:
+        weights (NDArray): Array of weights of shape (n_components, n_edges)
+        dualv (NDArray): Instantaneous Laplacians, of shape (n_samples, n_nodes, n_nodes)
+
+    Returns:
+        NDArray: Adjoint activations of shape (n_components, n_samples)
+    """
     return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
 
 
 def op_activations_norm(lapl: NDArray) -> float:
+    """Compute the norm of the inst-Laplacian operator restricted to activations"""
     if lapl.shape[0] == 1:
         return np.sqrt(np.sum(lapl**2))
     return svds(lapl.reshape(lapl.shape[0], -1), k=1, return_singular_vectors=False)[0]
