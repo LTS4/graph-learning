@@ -30,11 +30,12 @@ class GraphDictionary(BaseEstimator):
     def __init__(
         self,
         n_components=1,
-        l1_weights: float = 0,
-        l1_activations: float = 0,
-        ortho_weights: float = 0,
-        log_activations: float = 0,
         *,
+        l1_weights: float = 0,
+        ortho_weights: float = 0,
+        l1_activations: float = 0,
+        log_activations: float = 0,
+        l1_diff_activations: float = 0,
         max_iter: int = 1000,
         step_a: float = None,
         step_w: float = None,
@@ -50,10 +51,11 @@ class GraphDictionary(BaseEstimator):
         super().__init__()
 
         self.n_components = n_components
-        self.l1_weights = l1_weights
         self.ortho_weights = ortho_weights
+        self.l1_weights = l1_weights
         self.l1_activations = l1_activations
         self.log_activations = log_activations
+        self.l1_diff_activations = l1_diff_activations
 
         self.max_iter = max_iter
 
@@ -176,6 +178,18 @@ class GraphDictionary(BaseEstimator):
     def _update_activations(
         self, x: NDArray[np.float_], mc_activations: NDArray[np.float_], dual: NDArray[np.float_]
     ) -> NDArray[np.float_]:
+        """Update activations
+
+        Args:
+            x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
+            mc_activations (NDArray[np.float_]): Monte-Carlo probabilities of combinations
+                for each sample. Array of shape (2**n_components, n_samples)
+            dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
+                of shape (2**n_components, n_nodes, n_nodes)
+
+        Returns:
+            NDArray[np.float_]: Updated activations of shape (n_components, n_samples)
+        """
         laplacians = laplacian_squareform_vec(self.weights_)
         step_size = self.step_a / op_activations_norm(lapl=laplacians)
 
@@ -191,6 +205,11 @@ class GraphDictionary(BaseEstimator):
             grad_step = -self.log_activations / self.activations_.sum(axis=0, keepdims=True)
         else:
             grad_step = 0
+
+        if self.l1_diff_activations > 0:
+            grad_step = grad_step - self.l1_diff_activations * (
+                np.diff(np.sign(np.diff(self.activations_, axis=1)), axis=1, prepend=0, append=0)
+            )
 
         # Proximal and gradient step
         activations -= step_size * (
