@@ -2,7 +2,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from graph_learn.dictionary.base_model import GraphDictionary
+from .base_model import GraphDictionary
 
 
 class FixedWeights(GraphDictionary):
