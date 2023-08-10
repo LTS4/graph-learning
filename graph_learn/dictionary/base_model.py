@@ -6,6 +6,7 @@ from typing import Callable
 from warnings import warn
 
 import numpy as np
+import pandas as pd
 from numpy.random import RandomState
 from numpy.typing import NDArray
 from scipy.spatial.distance import squareform
@@ -42,6 +43,7 @@ class GraphDictionary(BaseEstimator):
         step_dual: float = None,
         mc_samples: int = 1000,
         tol: float = 1e-3,
+        reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
         weight_prior: float | NDArray[np.float_] = None,
@@ -78,6 +80,7 @@ class GraphDictionary(BaseEstimator):
 
         self.mc_samples = mc_samples
         self.tol = tol
+        self.reduce_step_on_plateau = reduce_step_on_plateau
 
         self.random_state = RandomState(random_state)
         self.init_strategy = init_strategy
@@ -102,7 +105,7 @@ class GraphDictionary(BaseEstimator):
         self.n_samples_: int
         self.scale_: float
         self.converged_: int
-        self.history_: dict[int, dict[str, int]]
+        self.history_: pd.DataFrame
         self.fit_time_: float
 
     def _initialize(self, x: NDArray) -> None:
@@ -142,6 +145,11 @@ class GraphDictionary(BaseEstimator):
 
         self.converged_ = -1
         self.fit_time_ = -1
+        self.history_ = pd.DataFrame(
+            data=-np.ones((self.max_iter, 2), dtype=float),
+            columns=["activ_change", "weight_change"],
+            index=np.arange(self.max_iter),
+        )
 
     def _component_pdist_sq(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Compute pairwise square distances on each componend, based on activations
@@ -191,7 +199,9 @@ class GraphDictionary(BaseEstimator):
             NDArray[np.float_]: Updated activations of shape (n_components, n_samples)
         """
         laplacians = laplacian_squareform_vec(self.weights_)
-        step_size = self.step_a / op_activations_norm(lapl=laplacians)
+        # TODO: maybe drop this
+        # step_size = self.step_a / op_activations_norm(lapl=laplacians)
+        step_size = self.step_a
 
         # Dual step
         # We apply the MC after the adjoint as n_samples >> n_combinantions
@@ -213,7 +223,9 @@ class GraphDictionary(BaseEstimator):
 
         # Proximal and gradient step
         activations -= step_size * (
-            np.einsum("ktn,tn->kt", x @ laplacians, x) + self.l1_activations + grad_step
+            np.einsum("ktn,tn->kt", x @ laplacians, x) / self.n_components
+            + self.l1_activations
+            + grad_step
         )
 
         # Projection
@@ -237,7 +249,12 @@ class GraphDictionary(BaseEstimator):
             NDArray[np.float_]: updated weights of shape (n_components, (n_nodes**2 - n_nodes) // 2)
         """
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
-        smoothness = self._component_pdist_sq(x) / self.n_samples_
+        # smoothness = self._component_pdist_sq(x) / self.n_samples_
+        smoothness = (
+            self._component_pdist_sq(x)
+            / self.n_samples_
+            / self.activations_.mean(1, keepdims=True)  # ** (1 / self.n_components)
+        )
 
         if self.ortho_weights > 0:
             # grad_step = (
@@ -260,7 +277,7 @@ class GraphDictionary(BaseEstimator):
         weights[weights < 0] = 0
         return weights
 
-    def _fit_step(self, x: NDArray[np.float_]) -> bool:
+    def _fit_step(self, x: NDArray[np.float_]) -> (float, float):
         mc_activations = self._mc_activations()
 
         # primal update
@@ -277,21 +294,20 @@ class GraphDictionary(BaseEstimator):
         # z1 -= step * prox_h(z1 / step, 1 / step)
         op_norm = op_weights_norm(
             activations=self.activations_, n_nodes=self.n_nodes_
-        ) * op_activations_norm(lapl=laplacian_squareform_vec(weights_overshoot))
+        )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights_overshoot))
         self.dual_ = self.dual_ + self.step_dual / op_norm * np.einsum(
             "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
         )
         self.dual_ = prox_gdet_star(self.dual_, sigma=self.step_dual / op_norm / self.n_samples_)
         # return x1, y1, z1
 
-        converged = (
-            relative_error(self.activations_.ravel(), activations.ravel()) < self.tol
-        ) and (relative_error(self.weights_.ravel(), weights.ravel()) < self.tol)
+        a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
+        w_rel_change = relative_error(self.weights_.ravel(), weights.ravel())
 
         self.activations_ = activations
         self.weights_ = weights
 
-        return converged
+        return a_rel_change, w_rel_change
 
     def fit(
         self,
@@ -305,8 +321,23 @@ class GraphDictionary(BaseEstimator):
         start = time()
         for i in range(self.max_iter):
             try:
-                if self._fit_step(x):
+                self.history_.iloc[i] = a_rel_change, w_rel_change = self._fit_step(x)
+
+                if (a_rel_change < self.tol) and (w_rel_change < self.tol):
                     self.converged_ = i
+
+                if (
+                    self.reduce_step_on_plateau
+                    and i > 100
+                    and (
+                        a_rel_change >= self.history_.iloc[i - 10 : i, 0].mean()
+                        and w_rel_change >= self.history_.iloc[i - 10 : i, 1].mean()
+                    )
+                ):
+                    warn(f"Divergence detected at step {i}, reducing step size", UserWarning)
+                    self.step_a *= 0.7
+                    self.step_w *= 0.7
+                    self.step_dual *= 0.7
 
                 if callback is not None:
                     callback(self, i)
