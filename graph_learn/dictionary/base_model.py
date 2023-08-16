@@ -32,6 +32,7 @@ class GraphDictionary(BaseEstimator):
         self,
         n_components=1,
         *,
+        window_size: int = 1,
         l1_w: float = 0,
         ortho_w: float = 0,
         smooth_a: float = 1,
@@ -55,6 +56,7 @@ class GraphDictionary(BaseEstimator):
         super().__init__()
 
         self.n_components = n_components
+        self.window_size = window_size
         self.ortho_w = ortho_w
         self.l1_w = l1_w
         self.smooth_a = smooth_a
@@ -130,6 +132,11 @@ class GraphDictionary(BaseEstimator):
                 self.activations_ *= self.activation_prior
         else:
             raise ValueError(f"Invalid init strategy {self.init_strategy}")
+
+        if self.window_size > 1:
+            self.activations_ = np.repeat(
+                self.activations_[:, :: self.window_size], self.window_size, axis=1
+            )[:, : self.n_samples_]
 
         self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
 
@@ -209,12 +216,16 @@ class GraphDictionary(BaseEstimator):
                 np.diff(np.sign(np.diff(self.activations_, axis=1)), axis=1, prepend=0, append=0)
             )
 
+        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
+        if self.window_size > 1:
+            smoothness = np.repeat(
+                # average non-overlapping windows
+                smoothness.reshape(self.n_components, -1, self.window_size).mean(2),
+                self.window_size,
+                axis=1,
+            )
         # Proximal and gradient step
-        activations -= step_size * (
-            np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a  # / self.n_components
-            + self.l1_a
-            + grad_step
-        )
+        activations -= step_size * (smoothness + self.l1_a + grad_step)
 
         # Projection
         activations[activations < 0] = 0
