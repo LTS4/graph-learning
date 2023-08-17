@@ -106,32 +106,41 @@ class GraphDictionary(BaseEstimator):
         self.weights_ = np.ones((self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2))
         self.activations_ = np.ones((self.n_components, self.n_samples_))
 
-        if self.init_strategy == "uniform":
-            if self.weight_prior is not None and self.activation_prior is not None:
-                raise ValueError("Need one free parameter for uniform initialization")
+        match self.init_strategy:
+            case "uniform":
+                if self.weight_prior is not None and self.activation_prior is not None:
+                    raise ValueError("Need one free parameter for uniform initialization")
 
-            if self.weight_prior is None:
-                self.weights_ = self.random_state.uniform(
-                    size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                if self.weight_prior is None:
+                    self.weights_ = self.random_state.uniform(
+                        size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                    )
+                else:
+                    self.weights_ *= self.weight_prior
+
+                if self.activation_prior is None:
+                    self.activations_ = self.random_state.uniform(
+                        size=(self.n_components, self.n_samples_)
+                    )
+                else:
+                    self.activations_ *= self.activation_prior
+
+            case "exp":
+                self.weights_ = self.random_state.exponential(
+                    scale=self.weight_prior or 1, size=self.weights_.shape
                 )
-            else:
-                self.weights_ *= self.weight_prior
-
-            if self.activation_prior is None:
-                self.activations_ = self.random_state.uniform(
-                    size=(self.n_components, self.n_samples_)
+                self.activations_ = self.random_state.exponential(
+                    scale=self.activation_prior or 1, size=self.activations_.shape
                 )
-            else:
-                self.activations_ *= self.activation_prior
 
-        elif self.init_strategy == "exact":
-            if self.weight_prior is not None:
-                self.weights_ *= self.weight_prior
+            case "exact":
+                if self.weight_prior is not None:
+                    self.weights_ *= self.weight_prior
 
-            if self.activation_prior is not None:
-                self.activations_ *= self.activation_prior
-        else:
-            raise ValueError(f"Invalid init strategy {self.init_strategy}")
+                if self.activation_prior is not None:
+                    self.activations_ *= self.activation_prior
+            case _:
+                raise ValueError(f"Invalid init strategy {self.init_strategy}")
 
         if self.window_size > 1:
             self.activations_ = np.repeat(
@@ -230,6 +239,11 @@ class GraphDictionary(BaseEstimator):
         # Projection
         activations[activations < 0] = 0
         activations[activations > 1] = 1
+
+        if np.allclose(activations, 0):
+            warn("All activations dropped to 0", UserWarning)
+            activations.fill(1)
+
         return activations
 
     def _update_weights(
@@ -318,6 +332,8 @@ class GraphDictionary(BaseEstimator):
         callback: Callable[[GraphDictionary, int]] = None,
     ) -> GraphDictionary:
         self._initialize(x)
+        if callback is not None:
+            callback(self, 0)
 
         start = time()
         for i in range(self.max_iter):
@@ -341,7 +357,7 @@ class GraphDictionary(BaseEstimator):
                     self.step_dual *= 0.7
 
                 if callback is not None:
-                    callback(self, i)
+                    callback(self, i + 1)
 
                 if self.converged_ > 0:
                     break
