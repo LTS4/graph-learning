@@ -116,11 +116,38 @@ class GraphDictionary(BaseEstimator):
         self.history_: pd.DataFrame
         self.fit_time_: float
 
+    def _init_activations(self, n_samples) -> NDArray[np.float_]:
+        activations = np.ones((self.n_components, n_samples))
+
+        match self.init_strategy:
+            case "uniform":
+                if self.activation_prior is None:
+                    activations = self.random_state.uniform(size=(self.n_components, n_samples))
+                else:
+                    self.activations_ *= self.activation_prior
+
+            case "exp":
+                activations = self.random_state.exponential(
+                    scale=self.activation_prior or 1, size=activations.shape
+                )
+
+            case "exact":
+                if self.activation_prior is not None:
+                    activations *= self.activation_prior
+            case _:
+                raise ValueError(f"Invalid init strategy {self.init_strategy}")
+
+        if self.window_size > 1:
+            activations = np.repeat(activations[:, :: self.window_size], self.window_size, axis=1)[
+                :, :n_samples
+            ]
+        return activations
+
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
 
         self.weights_ = np.ones((self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2))
-        self.activations_ = np.ones((self.n_components, self.n_samples_))
+        self.activations_ = self._init_activations(self.n_samples_)
 
         match self.init_strategy:
             case "uniform":
@@ -134,34 +161,17 @@ class GraphDictionary(BaseEstimator):
                 else:
                     self.weights_ *= self.weight_prior
 
-                if self.activation_prior is None:
-                    self.activations_ = self.random_state.uniform(
-                        size=(self.n_components, self.n_samples_)
-                    )
-                else:
-                    self.activations_ *= self.activation_prior
-
             case "exp":
                 self.weights_ = self.random_state.exponential(
                     scale=self.weight_prior or 1, size=self.weights_.shape
-                )
-                self.activations_ = self.random_state.exponential(
-                    scale=self.activation_prior or 1, size=self.activations_.shape
                 )
 
             case "exact":
                 if self.weight_prior is not None:
                     self.weights_ *= self.weight_prior
 
-                if self.activation_prior is not None:
-                    self.activations_ *= self.activation_prior
             case _:
                 raise ValueError(f"Invalid init strategy {self.init_strategy}")
-
-        if self.window_size > 1:
-            self.activations_ = np.repeat(
-                self.activations_[:, :: self.window_size], self.window_size, axis=1
-            )[:, : self.n_samples_]
 
         self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
 
@@ -378,3 +388,18 @@ class GraphDictionary(BaseEstimator):
         self.fit_time_ = time() - start
 
         return self
+
+    def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+        """Predict activations for a given signal"""
+        activations = self._init_activations(x.shape[0])
+
+        for _ in range(self.max_iter):
+            mc_a = mc_activations(activations, self.mc_samples, self.random_state)
+            activations_u = self._update_activations(x, activations, mc_a=mc_a, dual=self.dual_)
+
+            if np.norm(activations_u - activations) < self.tol:
+                return activations_u
+
+            activations = activations_u
+
+        return activations
