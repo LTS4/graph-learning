@@ -25,6 +25,23 @@ from graph_learn.operators import (
 )
 
 
+def mc_activations(
+    activations: NDArray[np.float], mc_samples: int, random_state: RandomState
+) -> NDArray[np.float]:
+    """Sample combinations of activations using Monte-Carlo"""
+    n_components, n_samples = activations.shape
+    combination_map = 2 ** np.arange(n_components)
+    arange = np.arange(n_samples)
+
+    out = np.zeros((2**n_components, n_samples), dtype=float)
+    for _ in range(mc_samples):
+        sampled = combination_map @ (random_state.uniform(size=activations.shape) <= activations)
+
+        out[sampled, arange] += 1
+
+    return out / mc_samples
+
+
 class GraphDictionary(BaseEstimator):
     """Graph components learning original method"""
 
@@ -81,7 +98,6 @@ class GraphDictionary(BaseEstimator):
 
         self.verbose = verbose
 
-        self._combination_map = np.array([2**k for k in range(self.n_components)])
         # Combinations are binary representation of their column index
         self._combinations = np.array(
             [
@@ -176,26 +192,18 @@ class GraphDictionary(BaseEstimator):
             ]
         )
 
-    def _mc_activations(self):
-        arange = np.arange(self.n_samples_)
-
-        out = np.zeros((2**self.n_components, self.n_samples_), dtype=np.float_)
-        for _ in range(self.mc_samples):
-            sampled = self._combination_map @ (
-                self.random_state.uniform(size=self.activations_.shape) <= self.activations_
-            )
-
-            out[sampled, arange] += 1
-
-        return out / self.mc_samples
-
     def _update_activations(
-        self, x: NDArray[np.float_], mc_a: NDArray[np.float_], dual: NDArray[np.float_]
+        self,
+        x: NDArray[np.float_],
+        activations: NDArray[np.float_],
+        mc_a: NDArray[np.float_],
+        dual: NDArray[np.float_],
     ) -> NDArray[np.float_]:
         """Update activations
 
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
+            activations (NDArray[np.float_]): Current activations of shape (n_components, n_samples)
             mc_a (NDArray[np.float_]): Monte-Carlo probabilities of combinations
                 for each sample. Array of shape (2**n_components, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
@@ -205,24 +213,17 @@ class GraphDictionary(BaseEstimator):
             NDArray[np.float_]: Updated activations of shape (n_components, n_samples)
         """
         laplacians = laplacian_squareform_vec(self.weights_)
-        # TODO: maybe drop this
-        # step_size = self.step_a / op_activations_norm(lapl=laplacians)
-        step_size = self.step_a
 
         # Dual step
         # We apply the MC after the adjoint as n_samples >> n_combinantions
-        activations = self.activations_ - step_size * op_adj_activations(self.weights_, dual) @ mc_a
-
-        step_size /= self.n_samples_
+        step = self.n_samples_ * op_adj_activations(self.weights_, dual) @ mc_a
 
         if self.log_a > 0:
-            grad_step = -self.log_a / self.activations_.sum(axis=0, keepdims=True)
-        else:
-            grad_step = 0
+            step -= self.log_a / activations.sum(axis=0, keepdims=True)
 
         if self.l1_diff_a > 0:
-            grad_step = grad_step - self.l1_diff_a * (
-                np.diff(np.sign(np.diff(self.activations_, axis=1)), axis=1, prepend=0, append=0)
+            step -= self.l1_diff_a * (
+                np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0)
             )
 
         smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
@@ -233,8 +234,12 @@ class GraphDictionary(BaseEstimator):
                 self.window_size,
                 axis=1,
             )
+
+        # Note: the step might be divided by the operator norm
+        step += smoothness + self.l1_a
+
         # Proximal and gradient step
-        activations -= step_size * (smoothness + self.l1_a + grad_step)
+        activations = activations - self.step_a / self.n_samples_ * step
 
         # Projection
         activations[activations < 0] = 0
@@ -247,7 +252,11 @@ class GraphDictionary(BaseEstimator):
         return activations
 
     def _update_weights(
-        self, x: NDArray[np.float_], mc_a: NDArray[np.float_], dual: NDArray[np.float_]
+        self,
+        x: NDArray[np.float_],
+        weights: NDArray[np.float_],
+        mc_a: NDArray[np.float_],
+        dual: NDArray[np.float_],
     ) -> NDArray[np.float_]:
         """Update the weights of the model
 
@@ -274,13 +283,13 @@ class GraphDictionary(BaseEstimator):
             # grad_step = (
             #     np.ones((self.n_components, 1)) - np.eye(self.n_components)
             # ) @ self.weights_
-            grad_step = self.weights_.sum(0, keepdims=True) - self.weights_
+            grad_step = weights.sum(0, keepdims=True) - weights
             grad_step *= self.ortho_w
         else:
             grad_step = 0
 
         # Proximal update
-        weights = self.weights_ - self.step_w / op_norm * (
+        weights = weights - self.step_w / op_norm * (
             op_adj_weights(self.activations_ @ mc_a.T, dual)  # Dual step
             + grad_step
             + smoothness  # Smoothness step
@@ -292,13 +301,13 @@ class GraphDictionary(BaseEstimator):
         return weights
 
     def _fit_step(self, x: NDArray[np.float_]) -> (float, float):
-        mc_a = self._mc_activations()
+        mc_a = mc_activations(self.activations_, self.mc_samples, self.random_state)
 
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
-        activations = self._update_activations(x, mc_a=mc_a, dual=self.dual_)
-        weights = self._update_weights(x, mc_a=mc_a, dual=self.dual_)
+        activations = self._update_activations(x, self.activations_, mc_a=mc_a, dual=self.dual_)
+        weights = self._update_weights(x, self.weights_, mc_a=mc_a, dual=self.dual_)
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
