@@ -42,6 +42,27 @@ def mc_activations(
     return out / mc_samples
 
 
+def powerset_matrix(n_components: int) -> NDArray[np.int_]:
+    return np.array(
+        [[(j >> i) & 1 for j in range(2**n_components)] for i in range(n_components)]
+    )  # shape (n_components, 2**n_components)
+
+
+def combinations_prob(
+    activations: NDArray[np.float_], pwset_mat: NDArray[np.int_] = None
+) -> NDArray[np.float_]:
+    """Compute exact probability of each combination of activations"""
+    if pwset_mat is None:
+        pwset_mat = powerset_matrix(activations.shape[0])
+
+    return np.stack(
+        [
+            np.prod(activations[combi], axis=0) * np.prod(1 - activations[~combi], axis=0)
+            for combi in pwset_mat.astype(bool).T
+        ]
+    )
+
+
 class GraphDictionary(BaseEstimator):
     """Graph components learning original method"""
 
@@ -99,11 +120,8 @@ class GraphDictionary(BaseEstimator):
         self.verbose = verbose
 
         # Combinations are binary representation of their column index
-        self._combinations = np.array(
-            [
-                [(j >> i) & 1 for j in range(2**self.n_components)]
-                for i in range(self.n_components)
-            ]
+        self._combinations = powerset_matrix(
+            n_components=self.n_components
         )  # shape (n_components, 2**n_components)
 
         self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
@@ -310,8 +328,23 @@ class GraphDictionary(BaseEstimator):
         weights[weights < 0] = 0
         return weights
 
+    def _update_dual(
+        self, weights: NDArray[np.float_], activations: NDArray[np.float_], dual: NDArray[np.float_]
+    ):
+        # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
+        # z1 -= step * prox_h(z1 / step, 1 / step)
+        # TODO: for fixed activations models I could filter combinations that don't appear
+        # NOTE: if weights never change, the eigendecomposition will always stay the same. Does this hold also if they stop changing?
+        op_norm = op_weights_norm(
+            activations=activations, n_nodes=self.n_nodes_
+        )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights))
+        dual = dual + self.step_dual / op_norm * np.einsum(
+            "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights)
+        )
+        return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
+
     def _fit_step(self, x: NDArray[np.float_]) -> (float, float):
-        mc_a = mc_activations(self.activations_, self.mc_samples, self.random_state)
+        mc_a = combinations_prob(self.activations_)
 
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
@@ -321,19 +354,13 @@ class GraphDictionary(BaseEstimator):
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
-        weights_overshoot = 2 * weights - self.weights_
-
-        # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
-        # z1 -= step * prox_h(z1 / step, 1 / step)
-        # TODO: for fixed activations models I could filter combinations that don't appear
-        op_norm = op_weights_norm(
-            activations=self.activations_, n_nodes=self.n_nodes_
-        )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights_overshoot))
-        self.dual_ = self.dual_ + self.step_dual / op_norm * np.einsum(
-            "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights_overshoot)
+        self.dual_ = self._update_dual(
+            weights=2 * weights - self.weights_,
+            # weights=weights,
+            # activations=2 * activations - self.activations_,
+            activations=activations,
+            dual=self.dual_,
         )
-        self.dual_ = prox_gdet_star(self.dual_, sigma=self.step_dual / op_norm / self.n_samples_)
-        # return x1, y1, z1
 
         a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
         w_rel_change = relative_error(self.weights_.ravel(), weights.ravel())
@@ -394,7 +421,7 @@ class GraphDictionary(BaseEstimator):
         activations = self._init_activations(x.shape[0])
 
         for _ in range(self.max_iter):
-            mc_a = mc_activations(activations, self.mc_samples, self.random_state)
+            mc_a = combinations_prob(activations)
             activations_u = self._update_activations(x, activations, mc_a=mc_a, dual=self.dual_)
 
             if np.norm(activations_u - activations) < self.tol:
