@@ -1,6 +1,9 @@
 """Partially fixed component models"""
 import numpy as np
+from numpy.linalg import eigh
 from numpy.typing import NDArray
+
+from graph_learn.operators import laplacian_squareform_vec, op_weights_norm
 
 from .base_model import GraphDictionary
 
@@ -10,6 +13,13 @@ class FixedWeights(GraphDictionary):
 
     Only Activations are optimized.
     """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self._eigvecs: NDArray
+        self._eigvals: NDArray
+        self._combi_lapl: NDArray
 
     def _initialize(self, x: NDArray):
         super()._initialize(x)
@@ -28,11 +38,48 @@ class FixedWeights(GraphDictionary):
 
         else:
             raise TypeError(
-                f"Weight prior must be a real number or a numpy array, got {type(self.activation_prior)}"
+                "Weight prior must be a real number or a numpy array,"
+                f"got {type(self.activation_prior)}"
             )
+
+        self._combi_lapl = np.einsum(
+            "kc,knm->cnm", self._combinations, laplacian_squareform_vec(self.weights_)
+        )
+        self._eigvals, self._eigvecs = eigh(self._combi_lapl)
 
     def _update_weights(self, *_args, **_kwargs) -> NDArray:
         return self.weights_
+
+    def _update_dual(self, weights: NDArray, activations: NDArray, dual: NDArray):
+        op_norm = op_weights_norm(
+            activations=activations, n_nodes=self.n_nodes_
+        )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights))
+
+        # return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
+        sigma = self.step_dual / op_norm / self.n_samples_
+
+        _shape = dual.shape
+        eigvals = np.nanmedian(dual @ self._eigvecs / self._eigvecs)
+        eigvals += self.step_dual / op_norm * self._eigvals
+
+        # Input shall be SPD, so negative values come from numerical erros
+        eigvals[eigvals < 0] = 0
+
+        # Proximal step
+        # eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+        eigvals -= np.sqrt(eigvals**2 + 4 * sigma)
+        eigvals /= 2
+        dual = np.stack(
+            [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, self._eigvecs)]
+        )
+        assert dual.shape == _shape
+
+        # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
+        # Note that the norm of the eigenvector is sqrt(n_nodes)
+        return dual + np.sqrt(sigma) / _shape[1]
+
+    def fit(self, *_args, **_kwargs) -> "FixedWeights":
+        return super().fit(*_args, **_kwargs)
 
 
 class FixedActivations(GraphDictionary):
