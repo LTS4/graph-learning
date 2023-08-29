@@ -81,7 +81,6 @@ class GraphDictionary(BaseEstimator):
         step_a: float = None,
         step_w: float = None,
         step_dual: float = None,
-        mc_samples: int = 1000,
         tol: float = 1e-3,
         reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
@@ -107,11 +106,13 @@ class GraphDictionary(BaseEstimator):
         self.step_w = step_w or step
         self.step_dual = step_dual or step
 
-        self.mc_samples = mc_samples
         self.tol = tol
         self.reduce_step_on_plateau = reduce_step_on_plateau
 
-        self.random_state = RandomState(random_state)
+        if isinstance(random_state, RandomState):
+            self.random_state = random_state
+        else:
+            self.random_state = RandomState(random_state)
         self.init_strategy = init_strategy
         self.weight_prior = weight_prior
         self.activation_prior = activation_prior
@@ -142,6 +143,12 @@ class GraphDictionary(BaseEstimator):
                     activations = self.random_state.uniform(size=(self.n_components, n_samples))
                 else:
                     self.activations_ *= self.activation_prior
+
+            case "discrete":
+                activations = self.random_state.uniform(size=(self.n_components, n_samples)) < (
+                    self.activation_prior or 0.5
+                )
+                activations = activations.astype(float)
 
             case "exp":
                 activations = self.random_state.exponential(
@@ -177,6 +184,12 @@ class GraphDictionary(BaseEstimator):
                     )
                 else:
                     self.weights_ *= self.weight_prior
+
+            case "discrete":
+                self.weights_ = self.random_state.uniform(
+                    size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                ) < (self.weight_prior or 0.5)
+                self.weights_ = self.weights_.astype(float)
 
             case "exp":
                 self.weights_ = self.random_state.exponential(
@@ -358,8 +371,9 @@ class GraphDictionary(BaseEstimator):
         self.dual_ = self._update_dual(
             weights=2 * weights - self.weights_,
             # weights=weights,
+            # TODO: understand what is going on here
             # activations=2 * activations - self.activations_,
-            activations=activations,
+            activations=self.activations_,
             dual=self.dual_,
         )
 
