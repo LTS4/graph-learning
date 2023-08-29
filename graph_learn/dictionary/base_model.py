@@ -17,7 +17,6 @@ from graph_learn.evaluation import relative_error
 # from graph_learn import OptimizationError
 from graph_learn.operators import (
     laplacian_squareform_vec,
-    op_activations_norm,
     op_adj_activations,
     op_adj_weights,
     op_weights_norm,
@@ -224,7 +223,7 @@ class GraphDictionary(BaseEstimator):
         self,
         x: NDArray[np.float_],
         activations: NDArray[np.float_],
-        mc_a: NDArray[np.float_],
+        combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
     ) -> NDArray[np.float_]:
         """Update activations
@@ -232,7 +231,7 @@ class GraphDictionary(BaseEstimator):
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
             activations (NDArray[np.float_]): Current activations of shape (n_components, n_samples)
-            mc_a (NDArray[np.float_]): Monte-Carlo probabilities of combinations
+            combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
                 for each sample. Array of shape (2**n_components, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
                 of shape (2**n_components, n_nodes, n_nodes)
@@ -244,7 +243,7 @@ class GraphDictionary(BaseEstimator):
 
         # Dual step
         # We apply the MC after the adjoint as n_samples >> n_combinantions
-        step = self.n_samples_ * op_adj_activations(self.weights_, dual) @ mc_a
+        step = self.n_samples_ * op_adj_activations(self.weights_, dual) @ combi_p
 
         if self.log_a > 0:
             step -= self.log_a / activations.sum(axis=0, keepdims=True)
@@ -263,7 +262,7 @@ class GraphDictionary(BaseEstimator):
                 axis=1,
             )
 
-        # Note: the step might be divided by the operator norm
+        # NOTE: the step might be divided by the operator norm
         step += smoothness + self.l1_a
 
         # Proximal and gradient step
@@ -283,14 +282,14 @@ class GraphDictionary(BaseEstimator):
         self,
         x: NDArray[np.float_],
         weights: NDArray[np.float_],
-        mc_a: NDArray[np.float_],
+        combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
     ) -> NDArray[np.float_]:
         """Update the weights of the model
 
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
-            mc_a (NDArray[np.float_]): Monte-Carlo probabilities of combinations
+            combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
                 for each sample. Array of shape (2**n_components, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
                 of shape (2**n_components, n_nodes, n_nodes)
@@ -318,7 +317,7 @@ class GraphDictionary(BaseEstimator):
 
         # Proximal update
         weights = weights - self.step_w / op_norm * (
-            op_adj_weights(self.activations_ @ mc_a.T, dual)  # Dual step
+            op_adj_weights(self.activations_ @ combi_p.T, dual)  # Dual step
             + grad_step
             + smoothness  # Smoothness step
             + self.l1_w  # L1 step
@@ -344,13 +343,15 @@ class GraphDictionary(BaseEstimator):
         return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
 
     def _fit_step(self, x: NDArray[np.float_]) -> (float, float):
-        mc_a = combinations_prob(self.activations_)
+        combi_p = combinations_prob(self.activations_)
 
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
-        activations = self._update_activations(x, self.activations_, mc_a=mc_a, dual=self.dual_)
-        weights = self._update_weights(x, self.weights_, mc_a=mc_a, dual=self.dual_)
+        activations = self._update_activations(
+            x, self.activations_, combi_p=combi_p, dual=self.dual_
+        )
+        weights = self._update_weights(x, self.weights_, combi_p=combi_p, dual=self.dual_)
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
@@ -421,10 +422,12 @@ class GraphDictionary(BaseEstimator):
         activations = self._init_activations(x.shape[0])
 
         for _ in range(self.max_iter):
-            mc_a = combinations_prob(activations)
-            activations_u = self._update_activations(x, activations, mc_a=mc_a, dual=self.dual_)
+            combi_p = combinations_prob(activations)
+            activations_u = self._update_activations(
+                x, activations, combi_p=combi_p, dual=self.dual_
+            )
 
-            if np.norm(activations_u - activations) < self.tol:
+            if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
                 return activations_u
 
             activations = activations_u
