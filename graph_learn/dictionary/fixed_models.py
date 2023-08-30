@@ -21,26 +21,27 @@ class FixedWeights(GraphDictionary):
         self._eigvals: NDArray
         self._combi_lapl: NDArray
 
-    def _initialize(self, x: NDArray):
-        super()._initialize(x)
+    def _init_weigths(self) -> NDArray[np.float_]:
+        expected_shape = (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
 
         if isinstance(self.weight_prior, np.ndarray):
-            if self.weights_.shape != self.weight_prior.shape:
+            if self.weight_prior.shape != expected_shape:
                 raise ValueError(
-                    f"Invalid weight prior shape, expected {self.activations_.shape},"
+                    f"Invalid weight prior shape, expected {expected_shape},"
                     f" got {self.weight_prior.shape}"
                 )
 
-            self.weights_ = self.weight_prior
-
-        elif isinstance(self.activation_prior, (float, int)):
-            self.weights_ = self.weight_prior * np.ones_like(self.weights_)
+            weights = self.weight_prior
 
         else:
             raise TypeError(
-                "Weight prior must be a real number or a numpy array,"
-                f"got {type(self.activation_prior)}"
+                "Weight prior must be a a numpy array," f"got {type(self.weight_prior)}"
             )
+
+        return weights
+
+    def _initialize(self, x: NDArray):
+        super()._initialize(x)
 
         self._combi_lapl = np.einsum(
             "kc,knm->cnm", self._combinations, laplacian_squareform_vec(self.weights_)
@@ -59,7 +60,9 @@ class FixedWeights(GraphDictionary):
         sigma = self.step_dual / op_norm / self.n_samples_
 
         _shape = dual.shape
-        eigvals = np.nanmedian(dual @ self._eigvecs / self._eigvecs)
+        eigvals = np.nanmean(
+            np.where(self._eigvecs, dual @ self._eigvecs / self._eigvecs, np.nan), axis=1
+        )
         eigvals += self.step_dual / op_norm * self._eigvals
 
         # Input shall be SPD, so negative values come from numerical erros
@@ -88,19 +91,19 @@ class FixedActivations(GraphDictionary):
     Only weights are optimized.
     """
 
-    def _initialize(self, x: NDArray):
-        super()._initialize(x)
+    def _init_activations(self, n_samples) -> NDArray[np.float_]:
+        expected_shape = (self.n_components, n_samples)
 
         if isinstance(self.activation_prior, np.ndarray):
-            if self.activations_.shape != self.activation_prior.shape:
+            if self.activation_prior.shape != expected_shape:
                 raise ValueError(
-                    f"Invalid activation prior shape, expected {self.activations_.shape},"
+                    f"Invalid activation prior shape, expected {expected_shape},"
                     f" got {self.activation_prior.shape}"
                 )
-            self.activations_ = self.activation_prior
+            activations = self.activation_prior
 
         elif isinstance(self.activation_prior, (float, int)):
-            self.activations_ = self.activation_prior * np.ones_like(self.activations_)
+            activations = self.activation_prior * np.ones_like(activations)
 
         else:
             raise TypeError(
@@ -109,3 +112,42 @@ class FixedActivations(GraphDictionary):
 
     def _update_activations(self, *_args, **_kwargs) -> NDArray:
         return self.activations_
+
+
+def fixw_from_full(model: GraphDictionary) -> FixedWeights:
+    """Create a :class:`FixedWeights` model from a :class:`GraphDictionary` model.
+
+    Parameters
+    ----------
+    model : GraphDictionary
+        Model to copy.
+
+    Returns
+    -------
+    FixedWeights
+        Model with fixed weights.
+    """
+    if not isinstance(model, GraphDictionary):
+        raise TypeError(f"Expected GraphDictionary, got {type(model)}")
+
+    return FixedWeights(
+        n_components=model.n_components,
+        weight_prior=model.weights_,
+        window_size=model.window_size,
+        l1_w=model.l1_w,
+        ortho_w=model.ortho_w,
+        smooth_a=model.smooth_a,
+        l1_a=model.l1_a,
+        log_a=model.log_a,
+        l1_diff_a=model.l1_diff_a,
+        max_iter=model.max_iter,
+        step_a=model.step_a,
+        step_w=model.step_w,
+        step_dual=model.step_dual,
+        tol=model.tol,
+        reduce_step_on_plateau=model.reduce_step_on_plateau,
+        random_state=model.random_state,
+        init_strategy=model.init_strategy,
+        activation_prior=model.activation_prior,
+        verbose=model.verbose,
+    )
