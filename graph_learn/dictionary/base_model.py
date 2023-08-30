@@ -167,11 +167,8 @@ class GraphDictionary(BaseEstimator):
             ]
         return activations
 
-    def _initialize(self, x: NDArray) -> None:
-        self.n_samples_, self.n_nodes_ = x.shape
-
-        self.weights_ = np.ones((self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2))
-        self.activations_ = self._init_activations(self.n_samples_)
+    def _init_weigths(self) -> NDArray[np.float_]:
+        weights = np.ones((self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2))
 
         match self.init_strategy:
             case "uniform":
@@ -179,30 +176,37 @@ class GraphDictionary(BaseEstimator):
                     raise ValueError("Need one free parameter for uniform initialization")
 
                 if self.weight_prior is None:
-                    self.weights_ = self.random_state.uniform(
+                    weights = self.random_state.uniform(
                         size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
                     )
                 else:
-                    self.weights_ *= self.weight_prior
+                    weights *= self.weight_prior
 
             case "discrete":
-                self.weights_ = self.random_state.uniform(
+                weights = self.random_state.uniform(
                     size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
                 ) < (self.weight_prior or 0.5)
-                self.weights_ = self.weights_.astype(float)
+                weights = weights.astype(float)
 
             case "exp":
-                self.weights_ = self.random_state.exponential(
-                    scale=self.weight_prior or 1, size=self.weights_.shape
+                weights = self.random_state.exponential(
+                    scale=self.weight_prior or 1, size=weights.shape
                 )
 
             case "exact":
                 if self.weight_prior is not None:
-                    self.weights_ *= self.weight_prior
+                    weights *= self.weight_prior
 
             case _:
                 raise ValueError(f"Invalid init strategy {self.init_strategy}")
 
+        return weights
+
+    def _initialize(self, x: NDArray) -> None:
+        self.n_samples_, self.n_nodes_ = x.shape
+
+        self.weights_ = self._init_weigths()
+        self.activations_ = self._init_activations(self.n_samples_)
         self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
 
         self.converged_ = -1
