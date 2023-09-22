@@ -8,11 +8,11 @@ def mc_activations(
     activations: NDArray[np.float_], mc_samples: int, random_state: RandomState
 ) -> NDArray[np.float_]:
     """Sample combinations of activations using Monte-Carlo"""
-    n_components, n_samples = activations.shape
-    combination_map = 2 ** np.arange(n_components)
+    n_atoms, n_samples = activations.shape
+    combination_map = 2 ** np.arange(n_atoms)
     arange = np.arange(n_samples)
 
-    out = np.zeros((2**n_components, n_samples), dtype=float)
+    out = np.zeros((2**n_atoms, n_samples), dtype=float)
     for _ in range(mc_samples):
         sampled = combination_map @ (random_state.uniform(size=activations.shape) <= activations)
 
@@ -21,18 +21,18 @@ def mc_activations(
     return out / mc_samples
 
 
-def powerset_matrix(n_components: int) -> NDArray[np.int_]:
-    """Return matrix of all combinations of n_components binary variables
+def powerset_matrix(n_atoms: int) -> NDArray[np.int_]:
+    """Return matrix of all combinations of n_atoms binary variables
 
     Args:
-        n_components (int): Number of components
+        n_atoms (int): Number of components
 
     Returns:
-        NDArray[np.int_]: Combination matrix of shape (n_components, 2**n_components)
+        NDArray[np.int_]: Combination matrix of shape (n_atoms, 2**n_atoms)
     """
     return np.array(
-        [[(j >> i) & 1 for j in range(2**n_components)] for i in range(n_components)]
-    )  # shape (n_components, 2**n_components)
+        [[(j >> i) & 1 for j in range(2**n_atoms)] for i in range(n_atoms)]
+    )  # shape (n_atoms, 2**n_atoms)
 
 
 def combinations_prob(
