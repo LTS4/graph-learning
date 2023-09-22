@@ -22,7 +22,7 @@ class FixedWeights(GraphDictionary):
         self._combi_lapl: NDArray
 
     def _init_weigths(self) -> NDArray[np.float_]:
-        expected_shape = (self.n_components, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
+        expected_shape = (self.n_atoms, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
 
         if isinstance(self.weight_prior, np.ndarray):
             if self.weight_prior.shape != expected_shape:
@@ -92,7 +92,7 @@ class FixedActivations(GraphDictionary):
     """
 
     def _init_activations(self, n_samples) -> NDArray[np.float_]:
-        expected_shape = (self.n_components, n_samples)
+        expected_shape = (self.n_atoms, n_samples)
 
         if isinstance(self.activation_prior, np.ndarray):
             if self.activation_prior.shape != expected_shape:
@@ -131,7 +131,7 @@ def fixw_from_full(model: GraphDictionary) -> FixedWeights:
         raise TypeError(f"Expected GraphDictionary, got {type(model)}")
 
     return FixedWeights(
-        n_components=model.n_components,
+        n_atoms=model.n_atoms,
         weight_prior=model.weights_,
         window_size=model.window_size,
         l1_w=model.l1_w,

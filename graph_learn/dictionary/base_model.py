@@ -31,7 +31,7 @@ class GraphDictionary(BaseEstimator):
 
     def __init__(
         self,
-        n_components=1,
+        n_atoms=1,
         *,
         window_size: int = 1,
         l1_w: float = 0,
@@ -55,7 +55,7 @@ class GraphDictionary(BaseEstimator):
     ) -> None:
         super().__init__()
 
-        self.n_components = n_components
+        self.n_atoms = n_atoms
         self.window_size = window_size
         self.ortho_w = ortho_w
         self.l1_w = l1_w
@@ -84,13 +84,11 @@ class GraphDictionary(BaseEstimator):
         self.verbose = verbose
 
         # Combinations are binary representation of their column index
-        self._combinations = powerset_matrix(
-            n_components=self.n_components
-        )  # shape (n_components, 2**n_components)
+        self._combinations = powerset_matrix(n_atoms=self.n_atoms)  # shape (n_atoms, 2**n_atoms)
 
-        self.activations_: NDArray[np.float_]  # shape (n_components, n_samples)
-        self.weights_: NDArray[np.float_]  # shape (n_components, n_edges )
-        self.dual_: NDArray[np.float_]  # shape (2**n_components, n_nodes, n_nodes)
+        self.activations_: NDArray[np.float_]  # shape (n_atoms, n_samples)
+        self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
+        self.dual_: NDArray[np.float_]  # shape (2**n_atoms, n_nodes, n_nodes)
         self.n_nodes_: int
         self.n_samples_: int
         self.scale_: float
@@ -99,17 +97,17 @@ class GraphDictionary(BaseEstimator):
         self.fit_time_: float
 
     def _init_activations(self, n_samples) -> NDArray[np.float_]:
-        activations = np.ones((self.n_components, n_samples))
+        activations = np.ones((self.n_atoms, n_samples))
 
         match self.init_strategy:
             case "uniform":
                 if self.activation_prior is None:
-                    activations = self.random_state.uniform(size=(self.n_components, n_samples))
+                    activations = self.random_state.uniform(size=(self.n_atoms, n_samples))
                 else:
                     self.activations_ *= self.activation_prior
 
             case "discrete":
-                activations = self.random_state.uniform(size=(self.n_components, n_samples)) < (
+                activations = self.random_state.uniform(size=(self.n_atoms, n_samples)) < (
                     self.activation_prior or 0.5
                 )
                 activations = activations.astype(float)
@@ -132,7 +130,7 @@ class GraphDictionary(BaseEstimator):
         return activations
 
     def _init_weigths(self) -> NDArray[np.float_]:
-        weights = np.ones((self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2))
+        weights = np.ones((self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2))
 
         match self.init_strategy:
             case "uniform":
@@ -141,14 +139,14 @@ class GraphDictionary(BaseEstimator):
 
                 if self.weight_prior is None:
                     weights = self.random_state.uniform(
-                        size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                        size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
                     )
                 else:
                     weights *= self.weight_prior
 
             case "discrete":
                 weights = self.random_state.uniform(
-                    size=(self.n_components, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                    size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
                 ) < (self.weight_prior or 0.5)
                 weights = weights.astype(float)
 
@@ -171,7 +169,7 @@ class GraphDictionary(BaseEstimator):
 
         self.weights_ = self._init_weigths()
         self.activations_ = self._init_activations(self.n_samples_)
-        self.dual_ = np.zeros((2**self.n_components, self.n_nodes_, self.n_nodes_))
+        self.dual_ = np.zeros((2**self.n_atoms, self.n_nodes_, self.n_nodes_))
 
         self.converged_ = -1
         self.fit_time_ = -1
@@ -189,7 +187,7 @@ class GraphDictionary(BaseEstimator):
 
         Returns:
             NDArray[np.float_]: Pairwise node squared distances of shape
-                (n_components, n_nodes, n_nodes)
+                (n_atoms, n_nodes, n_nodes)
         """
         # This works with continuous activations
         pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
@@ -211,14 +209,14 @@ class GraphDictionary(BaseEstimator):
 
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
-            activations (NDArray[np.float_]): Current activations of shape (n_components, n_samples)
+            activations (NDArray[np.float_]): Current activations of shape (n_atoms, n_samples)
             combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
-                for each sample. Array of shape (2**n_components, n_samples)
+                for each sample. Array of shape (2**n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
-                of shape (2**n_components, n_nodes, n_nodes)
+                of shape (2**n_atoms, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Updated activations of shape (n_components, n_samples)
+            NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
         """
         laplacians = laplacian_squareform_vec(self.weights_)
 
@@ -238,7 +236,7 @@ class GraphDictionary(BaseEstimator):
         if self.window_size > 1:
             smoothness = np.repeat(
                 # average non-overlapping windows
-                smoothness.reshape(self.n_components, -1, self.window_size).mean(2),
+                smoothness.reshape(self.n_atoms, -1, self.window_size).mean(2),
                 self.window_size,
                 axis=1,
             )
@@ -271,12 +269,12 @@ class GraphDictionary(BaseEstimator):
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
             combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
-                for each sample. Array of shape (2**n_components, n_samples)
+                for each sample. Array of shape (2**n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
-                of shape (2**n_components, n_nodes, n_nodes)
+                of shape (2**n_atoms, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: updated weights of shape (n_components, (n_nodes**2 - n_nodes) // 2)
+            NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         # smoothness = self._component_pdist_sq(x) / self.n_samples_
@@ -284,12 +282,12 @@ class GraphDictionary(BaseEstimator):
             self._component_pdist_sq(x)
             / self.n_samples_
             # TODO: this division produces NaN when an atom is never active
-            # / self.activations_.mean(1, keepdims=True)  # ** (1 / self.n_components)
+            # / self.activations_.mean(1, keepdims=True)  # ** (1 / self.n_atoms)
         )
 
         if self.ortho_w > 0:
             # grad_step = (
-            #     np.ones((self.n_components, 1)) - np.eye(self.n_components)
+            #     np.ones((self.n_atoms, 1)) - np.eye(self.n_atoms)
             # ) @ self.weights_
             grad_step = weights.sum(0, keepdims=True) - weights
             grad_step *= self.ortho_w
