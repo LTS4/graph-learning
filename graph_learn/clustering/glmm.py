@@ -118,7 +118,6 @@ class GLMM(BaseMixture):
         self.weights_: NDArray[np.float64]
         self.means_: NDArray[np.float64]
         self.laplacians_: NDArray[np.float64]
-        self.labels_: NDArray[np.int64]
 
     def _check_parameters(self, X):
         pass
