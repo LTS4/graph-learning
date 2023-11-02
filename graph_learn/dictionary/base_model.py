@@ -49,6 +49,7 @@ class GraphDictionary(BaseEstimator):
         reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
+        n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
         activation_prior: float | NDArray[np.float_] = None,
         verbose: int = 0,
@@ -77,7 +78,9 @@ class GraphDictionary(BaseEstimator):
             self.random_state = random_state
         else:
             self.random_state = RandomState(random_state)
+
         self.init_strategy = init_strategy
+        self.n_init = n_init
         self.weight_prior = weight_prior
         self.activation_prior = activation_prior
 
@@ -281,7 +284,7 @@ class GraphDictionary(BaseEstimator):
         smoothness = (
             self._component_pdist_sq(x)
             / self.n_samples_
-            # TODO: this division produces NaN when an atom is never active
+            # TODO: the following division produces NaN when an atom is never active
             # / self.activations_.mean(1, keepdims=True)  # ** (1 / self.n_atoms)
         )
 
@@ -351,7 +354,7 @@ class GraphDictionary(BaseEstimator):
 
         return a_rel_change, w_rel_change
 
-    def fit(
+    def _single_fit(
         self,
         x: NDArray[np.float_],
         _y=None,
@@ -394,6 +397,83 @@ class GraphDictionary(BaseEstimator):
                 break
 
         self.fit_time_ = time() - start
+
+        return self
+
+    def score(self, x: NDArray[np.float_], _y=None) -> float:
+        """Compute the negative log-likelihood of the model
+
+        Args:
+            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+            y (None, optional): Ignored. Defaults to None.
+
+        Returns:
+            float: Score of the model
+        """
+        # lw(self.weights_) + 1/self.n_samples * (
+        #     la(self.activations_) + sum_t(
+        #        - np.log(gdet(L_inst)) + x.T @ L_inst @ x
+        #    )
+        # )
+
+        # sum of L1 norm, orthogonality and smoothness
+        weight_loss = (
+            self.l1_w * np.abs(self.weights_).sum()
+            + self.ortho_w
+            * (np.sum(self.weights_.T @ self.weights_) - np.linalg.norm(self.weights_) ** 2)
+            + np.sum(self.weights_ * self._component_pdist_sq(x)) / self.n_samples_
+        )
+
+        activation_loss = self.l1_a * np.abs(self.activations_).sum()
+        raise NotImplementedError
+
+    def fit(
+        self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictionary, int]] = None
+    ):
+        """Fit the model to the data
+
+        Args:
+            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+            y (None, optional): Ignored. Defaults to None.
+            callback (Callable[[GraphDictionary, int]], optional): Callback function
+                called at each iteration. Defaults to None.
+
+        Returns:
+            GraphDictionary: self
+        """
+        if self.n_init == 1:
+            self._single_fit(x, callback=callback)
+
+        else:
+            best = {
+                "score": np.inf,
+                "weights": None,
+                "activations": None,
+                "dual": None,
+                "converged": None,
+                "fit_time": None,
+                "history": None,
+            }
+
+            for _ in range(self.n_init):
+                self._single_fit(x, callback=callback)
+                score = self.score(x)
+
+                if score < best["score"]:
+                    best["score"] = score
+                    best["weights"] = self.weights_
+                    best["activations"] = self.activations_
+                    best["dual"] = self.dual_
+                    best["converged"] = self.converged_
+                    best["fit_time"] = self.fit_time_
+                    best["history"] = self.history_
+
+            self.weights_ = best["weights"]
+            self.activations_ = best["activations"]
+            self.dual_ = best["dual"]
+            self.converged_ = best["converged"]
+            self.fit_time_ = best["fit_time"]
+            self.history_ = best["history"]
 
         return self
 
