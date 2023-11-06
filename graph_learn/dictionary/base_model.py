@@ -415,6 +415,9 @@ class GraphDictionary(BaseEstimator):
         #        - np.log(gdet(L_inst)) + x.T @ L_inst @ x
         #    )
         # )
+        if np.allclose(self.weights_, 0):
+            warn("All weights are 0, log determinant is undefined", UserWarning)
+            return np.inf
 
         # TODO: should smoothness appear twice?
 
@@ -469,7 +472,7 @@ class GraphDictionary(BaseEstimator):
         else:
             warn("Should still show effectiveness of multiple initialization", UserWarning)
             best = {
-                "score": np.inf,
+                "score": None,
                 "weights": None,
                 "activations": None,
                 "dual": None,
@@ -482,7 +485,7 @@ class GraphDictionary(BaseEstimator):
                 self._single_fit(x, callback=callback)
                 score = self.score(x)
 
-                if score < best["score"]:
+                if best["score"] is None or score < best["score"]:
                     best["score"] = score
                     best["weights"] = self.weights_
                     best["activations"] = self.activations_
