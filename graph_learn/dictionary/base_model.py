@@ -416,16 +416,38 @@ class GraphDictionary(BaseEstimator):
         #    )
         # )
 
+        # TODO: should smoothness appear twice?
+
         # sum of L1 norm, orthogonality and smoothness
         weight_loss = (
-            self.l1_w * np.abs(self.weights_).sum()
-            + self.ortho_w
-            * (np.sum(self.weights_.T @ self.weights_) - np.linalg.norm(self.weights_) ** 2)
-            + np.sum(self.weights_ * self._component_pdist_sq(x)) / self.n_samples_
+            self.l1_w * np.abs(self.weights_).sum()  # L1
+            + np.sum(self.weights_ * self._component_pdist_sq(x)) / self.n_samples_  # smoothness
         )
+        if self.ortho_w > 0:
+            # gradient
+            weight_loss += self.ortho_w * (
+                np.sum(self.weights_.T @ self.weights_) - np.linalg.norm(self.weights_) ** 2
+            )
 
         activation_loss = self.l1_a * np.abs(self.activations_).sum()
-        raise NotImplementedError
+        if self.log_a > 0:
+            activation_loss -= self.log_a * np.sum(np.log(self.activations_.sum(0)))
+        if self.l1_diff_a > 0:
+            warn("Check diff loss", UserWarning)
+            activation_loss -= self.l1_diff_a * np.linalg.norm(
+                np.diff(np.sign(np.diff(self.activations_, axis=1)), axis=1, prepend=0, append=0)
+            )
+
+        # Sum of log determinants
+        combi_p = combinations_prob(self.activations_)
+
+        eigvals = np.linalg.eigvalsh(
+            np.einsum("kc,knm->cnm", self._combinations, laplacian_squareform_vec(self.weights_))
+        )
+        # shape: (n_samples, n_combi) x (n_combi,)
+        loggdet = np.sum(combi_p.T @ np.log(np.where(eigvals > 0, eigvals, 1)).sum(-1))
+
+        return weight_loss + (activation_loss - loggdet) / self.n_samples_
 
     def fit(
         self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictionary, int]] = None
@@ -445,6 +467,7 @@ class GraphDictionary(BaseEstimator):
             self._single_fit(x, callback=callback)
 
         else:
+            warn("Should still show effectiveness of multiple initialization", UserWarning)
             best = {
                 "score": np.inf,
                 "weights": None,
