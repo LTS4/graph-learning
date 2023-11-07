@@ -470,7 +470,6 @@ class GraphDictionary(BaseEstimator):
             self._single_fit(x, callback=callback)
 
         else:
-            warn("Should still show effectiveness of multiple initialization", UserWarning)
             best = {
                 "score": None,
                 "weights": None,
