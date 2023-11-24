@@ -5,7 +5,7 @@ from typing import Optional
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.spatial.distance import pdist
+from scipy.spatial.distance import pdist, squareform
 from sklearn.mixture._base import BaseMixture
 
 from graph_learn.sampling.graphs import sample_uniform_laplacian
@@ -31,7 +31,7 @@ def _estimate_gauss_laplacian_parameters(
 
         # theta = np.mean(sq_dist) / norm_par
         edge_weights = delta * gsp_learn_graph_log_degrees(
-            sq_dist * get_theta(sq_dist, avg_degree),
+            sq_dist * get_theta(squareform(sq_dist), avg_degree),
             alpha=1,
             beta=1,
         )

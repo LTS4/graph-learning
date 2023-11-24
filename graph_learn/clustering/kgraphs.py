@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.spatial.distance import pdist
+from scipy.spatial.distance import pdist, squareform
 from scipy.special import softmax
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_random_state
@@ -96,7 +96,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
                 #     theta = 1
 
                 edge_weights = self.delta * gsp_learn_graph_log_degrees(
-                    sq_dist * get_theta(sq_pdists=sq_dist, avg_degree=self.avg_degree),
+                    sq_dist * get_theta(sq_pdists=squareform(sq_dist), avg_degree=self.avg_degree),
                     alpha=1,
                     beta=1,
                 )
