@@ -11,7 +11,7 @@ from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_random_state
 
 from graph_learn.clustering.utils import init_labels
-from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
+from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
 
 class KGraphs(BaseEstimator, ClusterMixin):
@@ -19,10 +19,10 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
     Args:
         n_clusters (int, optional): Number of clusters. Defaults to 1.
+        avg_degree (float, optional): Average degree of the graph. Defaults to 0.5.
         max_iter (int, optional): Maximum EM steps. Defaults to 100.
         n_init (int, optional): Number of separate initalization. Defaults to 1.
         init_params (str, optional): Label initialization method. Defaults to "kmeans".
-        norm_par (float, optional): Graph learning parameter. Defaults to 1.5.
         delta (float, optional): _description_. Defaults to 2.
         random_state (Optional[RandomState], optional): _description_. Defaults to None.
 
@@ -41,12 +41,13 @@ class KGraphs(BaseEstimator, ClusterMixin):
     def __init__(
         self,
         n_clusters=1,
+        avg_degree: float = 0.5,
         *,
         max_iter=100,
         n_init=1,
         init_params="kmeans",
-        norm_par: float = 1.5,
-        delta: float = 2,
+        # norm_par: float = 1.5,
+        delta: float = 1,
         random_state: Optional[RandomState] = None,
     ) -> None:
         self.n_clusters = n_clusters
@@ -54,8 +55,9 @@ class KGraphs(BaseEstimator, ClusterMixin):
         self.max_iter = max_iter
         self.n_init = n_init
         self.init_params = init_params
-        self.norm_par = norm_par
+        # self.norm_par = norm_par
         self.delta = delta
+        self.avg_degree = avg_degree
         self.random_state = random_state
 
         self.labels_: NDArray[np.int_]
@@ -88,14 +90,15 @@ class KGraphs(BaseEstimator, ClusterMixin):
         for _i in range(self.max_iter):
             # Compute Laplacians
             for k in range(self.n_clusters):
-
                 sq_dist = pdist(x[self.labels_ == k].T) ** 2
-                theta = np.mean(sq_dist) / self.norm_par
-                if np.allclose(theta, 0):
-                    theta = 1
+                # theta = np.mean(sq_dist) / self.norm_par
+                # if np.allclose(theta, 0):
+                #     theta = 1
 
                 edge_weights = self.delta * gsp_learn_graph_log_degrees(
-                    sq_dist / theta, alpha=1, beta=1
+                    sq_dist * get_theta(sq_pdists=sq_dist, avg_degree=self.avg_degree),
+                    alpha=1,
+                    beta=1,
                 )
 
                 self.laplacians_[k] = np.diag(np.sum(edge_weights, axis=1)) - edge_weights
