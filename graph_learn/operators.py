@@ -35,6 +35,9 @@ def relaxed_update(
     return out, rel_norms
 
 
+square_to_vec = np.vectorize(squareform, signature="(n,n)->(e)")
+
+
 def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
     """Get Laplacians from vectorized edge weights
 
@@ -113,7 +116,7 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
     partial += np.transpose(partial, (0, 2, 1))
 
-    return np.stack([squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
+    return square_to_vec(squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
 
 
 def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
