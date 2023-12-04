@@ -16,6 +16,7 @@ from graph_learn.evaluation import relative_error
 
 # from graph_learn import OptimizationError
 from graph_learn.operators import (
+    square_to_vec,
     laplacian_squareform_vec,
     op_adj_activations,
     op_adj_weights,
@@ -194,12 +195,15 @@ class GraphDictionary(BaseEstimator):
         """
         # This works with continuous activations
         pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
-        return np.stack(
-            [
-                squareform(kdiff)
-                for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
-            ]
+        # return np.stack(
+        #     [
+        #         squareform(kdiff)
+        #         for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
+        #     ]
         )
+        # this should be faster
+        # FIXME: it would be much faster to keep the precomputed pdiffs
+        return self.activations_ @ square_to_vec(pdiffs)**2
 
     def _update_activations(
         self,
@@ -213,8 +217,8 @@ class GraphDictionary(BaseEstimator):
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
             activations (NDArray[np.float_]): Current activations of shape (n_atoms, n_samples)
-            combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
-                for each sample. Array of shape (2**n_atoms, n_samples)
+            combi_p (NDArray[np.float_]): Probabilities of combinations for each sample.
+                Array of shape (2**n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
                 of shape (2**n_atoms, n_nodes, n_nodes)
 
@@ -279,6 +283,7 @@ class GraphDictionary(BaseEstimator):
         Returns:
             NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
+        # FIXME: here I use activations (K x T), while for prox update I use activations_ @ combi_p.T (K x 2**k)
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
         # smoothness = self._component_pdist_sq(x) / self.n_samples_
         smoothness = (
