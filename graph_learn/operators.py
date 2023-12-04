@@ -103,6 +103,9 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     return dvar + np.sqrt(sigma) / _shape[1]
 
 
+diag_vec = np.vectorize(np.diag, signature="(n,n)->(n)")
+
+
 def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     """Compute the adjoint of the bilinear inst-Laplacian operator wrt weights
 
@@ -113,10 +116,10 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     Returns:
         NDArray: Dual weights of shape (n_components, n_edges)
     """
-    partial = np.stack([np.diag(y) for y in dualv])[:, :, np.newaxis] - dualv
+    partial = diag_vec(dualv)[:, :, np.newaxis] - dualv
     partial += np.transpose(partial, (0, 2, 1))
 
-    return square_to_vec(squareform(lapl) for lapl in np.einsum("kt,tnm->knm", activations, partial)])
+    return activations @ square_to_vec(partial)
 
 
 def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
