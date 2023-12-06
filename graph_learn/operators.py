@@ -35,7 +35,9 @@ def relaxed_update(
     return out, rel_norms
 
 
-square_to_vec = np.vectorize(squareform, signature="(n,n)->(e)")
+def square_to_vec(x: NDArray[np.float_]) -> NDArray[np.float_]:
+    triu = np.triu_indices(x.shape[-1], k=1)
+    return x[:, triu[0], triu[1]]
 
 
 def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
@@ -52,9 +54,17 @@ def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
     return lapl
 
 
-laplacian_squareform_vec = np.vectorize(
-    laplacian_squareform, otypes=[float], signature="(e)->(n,n)"
-)
+def laplacian_squareform_vec(x: NDArray[np.float_]) -> NDArray[np.float_]:
+    """Tensor form of laplacian squareform"""
+    n_nodes = int(np.sqrt(2 * x.shape[-1] + 0.25) + 0.5)
+    triu = np.triu_indices(n_nodes, k=1)
+
+    laplacians = np.zeros((x.shape[0], n_nodes, n_nodes), dtype=x.dtype)
+    laplacians[:, triu[0], triu[1]] = -x
+    laplacians += np.transpose(laplacians, (0, 2, 1))
+    laplacians[:, np.arange(n_nodes), np.arange(n_nodes)] = -laplacians.sum(axis=-1)
+
+    return laplacians
 
 
 def laplacian_squareform_adj(laplacian: NDArray[np.float_]) -> NDArray[np.float_]:
@@ -69,9 +79,16 @@ def laplacian_squareform_adj(laplacian: NDArray[np.float_]) -> NDArray[np.float_
     )
 
 
-laplacian_squareform_adj_vec = np.vectorize(
-    laplacian_squareform_adj, otypes=[float], signature="(n,n)->(e)"
-)
+def laplacian_squareform_adj_vec(laplacians: NDArray[np.float_]) -> NDArray[np.float_]:
+    """Tensor form of adjoint of laplacian squareform"""
+    diags = np.diagonal(laplacians, axis1=-2, axis2=-1)
+    laplacians = (
+        -laplacians
+        - np.transpose(laplacians, (0, 2, 1))
+        + diags[:, :, np.newaxis]
+        + diags[:, np.newaxis, :]
+    )
+    return square_to_vec(laplacians)
 
 
 def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
@@ -93,6 +110,7 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
 
     # Proximal step
     eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+    # FIXME: do this with einsum
     dvar = np.stack(
         [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, eigvecs)]
     )
@@ -101,9 +119,6 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
     # Note that the norm of the eigenvector is sqrt(n_nodes)
     return dvar + np.sqrt(sigma) / _shape[1]
-
-
-diag_vec = np.vectorize(np.diag, signature="(n,n)->(n)")
 
 
 def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
@@ -116,7 +131,7 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     Returns:
         NDArray: Dual weights of shape (n_components, n_edges)
     """
-    partial = diag_vec(dualv)[:, :, np.newaxis] - dualv
+    partial = np.diagonal(dualv, axis1=-1, axis2=-2)[:, :, np.newaxis] - dualv
     partial += np.transpose(partial, (0, 2, 1))
 
     return activations @ square_to_vec(partial)
