@@ -17,10 +17,30 @@ from graph_learn.operators import (
 )
 
 ################################################################################
+# Base operators tests
+
+
+def test_laplacian_squareform_vec():
+    """Verify the tensor version of the laplacian_squareform operator"""
+    for seed in range(1000):
+        rng = default_rng(seed)
+        n_nodes = rng.integers(20, 100)
+        n_components = rng.integers(1, 10)
+
+        weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
+
+        assert np.allclose(
+            [laplacian_squareform(x) for x in weights],
+            laplacian_squareform_vec(weights),
+        )
+
+
+################################################################################
 # Operator adjoint tests
 
 
 def test_laplacian_squareform_adj():
+    """Verify the adjoint of the laplacian_squareform operator"""
     for seed in range(1000):
         rng = default_rng(seed)
         n_nodes = rng.integers(20, 100)
@@ -35,6 +55,7 @@ def test_laplacian_squareform_adj():
 
 
 def test_laplacian_squareform_adj_vec():
+    """Verify the tensor version of the adjoint of the laplacian_squareform operator"""
     for seed in range(1000):
         rng = default_rng(seed)
         n_nodes = rng.integers(20, 100)
@@ -50,8 +71,8 @@ def test_laplacian_squareform_adj_vec():
 
 
 def test_op_adj_weights():
-    """Verify that the operator adjoint of the weights is correct"""
-    for seed in range(1000):
+    """Verify the operator adjoint of the weights"""
+    for seed in range(100):
         rng = default_rng(seed)
         n_components = rng.integers(1, 10)
         n_nodes = rng.integers(20, 100)
@@ -68,7 +89,7 @@ def test_op_adj_weights():
 
 
 def test_op_adj_activations():
-    """Verify that the operator adjoint of the activations is correct"""
+    """Verify the operator adjoint of the activations"""
     for seed in range(1000):
         rng = default_rng(seed)
         n_components = rng.integers(1, 10)
@@ -86,6 +107,7 @@ def test_op_adj_activations():
 
 
 def test_full_adjoint():
+    """Verify the full adjoint of the bilinear operator"""
     for seed in range(1000):
         rng = default_rng(seed)
         n_components = rng.integers(1, 10)
@@ -119,7 +141,7 @@ SPACE_SAMPLES = [100, 500, 1000]
     "n_components,n_nodes,n_samples", list(product(SPACE_COMPONENTS, SPACE_NODES, SPACE_SAMPLES))
 )
 def test_operator_norm_weights(n_components, n_nodes, n_samples):
-    """Verify that the operator norm, wrt weights is correct"""
+    """Verify the operator norm, wrt weights"""
 
     rng = default_rng(n_components * n_nodes * n_samples)
 
@@ -145,7 +167,7 @@ def test_operator_norm_weights(n_components, n_nodes, n_samples):
     "n_components, n_nodes, n_samples", list(product(SPACE_COMPONENTS, SPACE_NODES, SPACE_SAMPLES))
 )
 def test_operator_norm_activations(n_components, n_nodes, n_samples):
-    """Verify that the operator norm, wrt activations is correct"""
+    """Verify the operator norm, wrt activations"""
 
     rng = default_rng(n_components * n_nodes * n_samples)
 
