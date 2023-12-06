@@ -62,7 +62,9 @@ def laplacian_squareform_vec(x: NDArray[np.float_]) -> NDArray[np.float_]:
     laplacians = np.zeros((x.shape[0], n_nodes, n_nodes), dtype=x.dtype)
     laplacians[:, triu[0], triu[1]] = -x
     laplacians += np.transpose(laplacians, (0, 2, 1))
-    laplacians[:, np.arange(n_nodes), np.arange(n_nodes)] = -laplacians.sum(axis=-1)
+
+    arange = np.arange(n_nodes)
+    laplacians[:, arange, arange] = -laplacians.sum(axis=-1)
 
     return laplacians
 
@@ -110,10 +112,8 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
 
     # Proximal step
     eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
-    # FIXME: do this with einsum
-    dvar = np.stack(
-        [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, eigvecs)]
-    )
+
+    dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
     assert dvar.shape == _shape
 
     # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
@@ -154,7 +154,7 @@ def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
     Returns:
         NDArray: Adjoint activations of shape (n_components, n_samples)
     """
-    return np.einsum("tnm,knm->kt", dualv, laplacian_squareform_vec(weights))
+    return np.tensordot(laplacian_squareform_vec(weights), dualv, axes=((-2, -1), (-2, -1)))
 
 
 def op_activations_norm(lapl: NDArray) -> float:
