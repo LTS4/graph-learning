@@ -80,7 +80,10 @@ def test_op_adj_weights():
 
         activations = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
-        dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
+        # dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
+        dual = laplacian_squareform_vec(
+            rng.standard_normal((n_samples, (n_nodes * (n_nodes - 1)) // 2))
+        )
 
         assert np.allclose(
             np.sum(weights * op_adj_weights(activations, dual)),
@@ -116,7 +119,10 @@ def test_full_adjoint():
 
         activations = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
-        dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
+        # dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
+        dual = laplacian_squareform_vec(
+            rng.standard_normal((n_samples, (n_nodes * (n_nodes - 1)) // 2))
+        )
 
         prod1 = np.sum(
             dual * np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights))

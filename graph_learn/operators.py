@@ -118,6 +118,9 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
 
     # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
     # Note that the norm of the eigenvector is sqrt(n_nodes)
+
+    # FIXME: I should actually remove all the eigenvectors with original eigenvalue 0,
+    # as this is a GENERALIZED log-determinant, except if they are all zero.
     return dvar + np.sqrt(sigma) / _shape[1]
 
 
@@ -131,10 +134,10 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     Returns:
         NDArray: Dual weights of shape (n_components, n_edges)
     """
-    partial = np.diagonal(dualv, axis1=-1, axis2=-2)[:, :, np.newaxis] - dualv
-    partial += np.transpose(partial, (0, 2, 1))
-
-    return activations @ square_to_vec(partial)
+    diags = np.diagonal(dualv, axis1=-1, axis2=-2)
+    return activations @ square_to_vec(
+        diags[:, :, np.newaxis] + diags[:, np.newaxis, :] - 2 * dualv
+    )
 
 
 def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
