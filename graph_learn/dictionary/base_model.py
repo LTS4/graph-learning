@@ -9,19 +9,18 @@ import numpy as np
 import pandas as pd
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.spatial.distance import squareform
 from sklearn.base import BaseEstimator
 
 from graph_learn.evaluation import relative_error
 
 # from graph_learn import OptimizationError
 from graph_learn.operators import (
-    square_to_vec,
     laplacian_squareform_vec,
     op_adj_activations,
     op_adj_weights,
     op_weights_norm,
     prox_gdet_star,
+    square_to_vec,
 )
 
 from .utils import combinations_prob, powerset_matrix
@@ -200,10 +199,10 @@ class GraphDictionary(BaseEstimator):
         #         squareform(kdiff)
         #         for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
         #     ]
-        )
+        # )
         # this should be faster
         # FIXME: it would be much faster to keep the precomputed pdiffs
-        return self.activations_ @ square_to_vec(pdiffs)**2
+        return self.activations_ @ square_to_vec(pdiffs) ** 2
 
     def _update_activations(
         self,
@@ -285,13 +284,8 @@ class GraphDictionary(BaseEstimator):
         """
         # FIXME: here I use activations (K x T), while for prox update I use activations_ @ combi_p.T (K x 2**k)
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
-        # smoothness = self._component_pdist_sq(x) / self.n_samples_
-        smoothness = (
-            self._component_pdist_sq(x)
-            / self.n_samples_
-            # TODO: the following division produces NaN when an atom is never active
-            # / self.activations_.mean(1, keepdims=True)  # ** (1 / self.n_atoms)
-        )
+
+        smoothness = self._component_pdist_sq(x) / self.n_samples_
 
         if self.ortho_w > 0:
             # grad_step = (
@@ -319,8 +313,12 @@ class GraphDictionary(BaseEstimator):
     ):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
-        # TODO: for fixed activations models I could filter combinations that don't appear
-        # NOTE: if weights never change, the eigendecomposition will always stay the same. Does this hold also if they stop changing?
+
+        # NOTE: Isn't it weird that activations have so little influence on the dual update?
+
+        # TODO: I should filter combinations that don't appear, but will they never appear?
+        # Filtering would work for fixed activations
+
         op_norm = op_weights_norm(
             activations=activations, n_nodes=self.n_nodes_
         )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights))
@@ -423,8 +421,6 @@ class GraphDictionary(BaseEstimator):
         if np.allclose(self.weights_, 0):
             warn("All weights are 0, log determinant is undefined", UserWarning)
             return np.inf
-
-        # TODO: should smoothness appear twice?
 
         # sum of L1 norm, orthogonality and smoothness
         weight_loss = (
