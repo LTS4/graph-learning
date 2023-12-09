@@ -88,6 +88,7 @@ class GraphDictionary(BaseEstimator):
 
         # Combinations are binary representation of their column index
         self._combinations = powerset_matrix(n_atoms=self.n_atoms)  # shape (n_atoms, 2**n_atoms)
+        self._sq_pdiffs: NDArray[np.float_]  # shape (n_atoms, n_edges )
 
         self.activations_: NDArray[np.float_]  # shape (n_atoms, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
@@ -174,6 +175,8 @@ class GraphDictionary(BaseEstimator):
         self.activations_ = self._init_activations(self.n_samples_)
         self.dual_ = np.zeros((2**self.n_atoms, self.n_nodes_, self.n_nodes_))
 
+        self._sq_pdiffs = self._pairwise_sq_diff(x)
+
         self.converged_ = -1
         self.fit_time_ = -1
         self.history_ = pd.DataFrame(
@@ -182,7 +185,23 @@ class GraphDictionary(BaseEstimator):
             index=np.arange(self.max_iter),
         )
 
-    def _component_pdist_sq(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _pairwise_sq_diff(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+        """Compute pairwise square differences between all signals, on all nodes
+
+        Args:
+            x (NDArray[np.float_]): Signals matrix of shape (n_samples, n_nodes)
+
+        Returns:
+            NDArray[np.float_]: Pairwise squared diferences on all edges of shape
+                (n_samples, n_edges), w/ ``n_edges = n_nodes * (n_nodes - 1) / 2``
+        """
+        # This works with continuous activations
+        pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
+        return square_to_vec(pdiffs) ** 2
+
+    def _component_pdist_sq(
+        self, activations: NDArray[np.float_], x: NDArray[np.float_] = None
+    ) -> NDArray[np.float_]:
         """Compute pairwise square distances on each componend, based on activations
 
         Args:
@@ -190,19 +209,13 @@ class GraphDictionary(BaseEstimator):
 
         Returns:
             NDArray[np.float_]: Pairwise node squared distances of shape
-                (n_atoms, n_nodes, n_nodes)
+                (n_atoms, n_edges), w/ ``n_edges = n_nodes * (n_nodes - 1) / 2``
         """
-        # This works with continuous activations
-        pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
-        # return np.stack(
-        #     [
-        #         squareform(kdiff)
-        #         for kdiff in np.einsum("kt,tnm->knm", self.activations_, pdiffs**2)
-        #     ]
-        # )
-        # this should be faster
-        # FIXME: it would be much faster to keep the precomputed pdiffs
-        return self.activations_ @ square_to_vec(pdiffs) ** 2
+        if x is None:
+            sq_pdiffs = self._sq_pdiffs
+        else:
+            sq_pdiffs = self._pairwise_sq_diff(x)
+        return activations @ sq_pdiffs
 
     def _update_activations(
         self,
@@ -285,7 +298,7 @@ class GraphDictionary(BaseEstimator):
         # FIXME: here I use activations (K x T), while for prox update I use activations_ @ combi_p.T (K x 2**k)
         op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
 
-        smoothness = self._component_pdist_sq(x) / self.n_samples_
+        smoothness = self._component_pdist_sq(self.activations_) / self.n_samples_
 
         if self.ortho_w > 0:
             # grad_step = (
@@ -425,7 +438,8 @@ class GraphDictionary(BaseEstimator):
         # sum of L1 norm, orthogonality and smoothness
         weight_loss = (
             self.l1_w * np.abs(self.weights_).sum()  # L1
-            + np.sum(self.weights_ * self._component_pdist_sq(x)) / self.n_samples_  # smoothness
+            + np.sum(self.weights_ * self._component_pdist_sq(self.activations_, x))
+            / self.n_samples_  # smoothness
         )
         if self.ortho_w > 0:
             # gradient
