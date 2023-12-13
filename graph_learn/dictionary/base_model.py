@@ -261,7 +261,8 @@ class GraphDictionary(BaseEstimator):
             )
 
         # NOTE: the step might be divided by the operator norm
-        step += smoothness + self.l1_a
+        # FIXME: l1_a should not be divided by n_samples, so I am multiplying
+        step += smoothness + self.l1_a * self.n_samples_
 
         # Proximal and gradient step
         activations = activations - self.step_a / self.n_samples_ * step
