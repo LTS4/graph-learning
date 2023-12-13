@@ -106,12 +106,16 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     _shape = dvar.shape
     # I have to identify the Laplacians which are unique, to speed-up computations
     eigvals, eigvecs = eigh(dvar)
+    # _eigvals = eigvals.copy()
 
     # Input shall be SPD, so negative values come from numerical erros
     eigvals[eigvals < 0] = 0
 
+    # Generalized update
+    eigvals = (eigvals > 0) * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+    eigvals[:, np.isclose(eigvals.sum(axis=0), 0)] = np.sqrt(sigma)
+
     # Proximal step
-    eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
 
     dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
     assert dvar.shape == _shape
