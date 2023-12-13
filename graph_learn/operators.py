@@ -124,6 +124,13 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     return dvar + np.sqrt(sigma) / _shape[1]
 
 
+def op_adj_dual(dualv: NDArray) -> NDArray:
+    diags = np.diagonal(dualv, axis1=-1, axis2=-2)
+    return square_to_vec(
+        diags[:, :, np.newaxis] + diags[:, np.newaxis, :] - dualv - dualv.transpose((0, 2, 1))
+    )
+
+
 def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     """Compute the adjoint of the bilinear inst-Laplacian operator wrt weights
 
@@ -134,10 +141,7 @@ def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
     Returns:
         NDArray: Dual weights of shape (n_components, n_edges)
     """
-    diags = np.diagonal(dualv, axis1=-1, axis2=-2)
-    return activations @ square_to_vec(
-        diags[:, :, np.newaxis] + diags[:, np.newaxis, :] - 2 * dualv
-    )
+    return activations @ op_adj_dual(dualv)
 
 
 def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
@@ -157,7 +161,8 @@ def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
     Returns:
         NDArray: Adjoint activations of shape (n_components, n_samples)
     """
-    return np.tensordot(laplacian_squareform_vec(weights), dualv, axes=((-2, -1), (-2, -1)))
+    # return np.tensordot(laplacian_squareform_vec(weights), dualv, axes=((-2, -1), (-2, -1)))
+    return weights @ op_adj_dual(dualv).T
 
 
 def op_activations_norm(lapl: NDArray) -> float:
