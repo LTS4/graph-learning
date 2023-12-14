@@ -104,18 +104,21 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
         NDArray[np.float_]: Proximal point
     """
     _shape = dvar.shape
-    # I have to identify the Laplacians which are unique, to speed-up computations
+    # I schould identify unique Laplacians, to speed-up computations
     eigvals, eigvecs = eigh(dvar)
     # _eigvals = eigvals.copy()
 
     # Input shall be SPD, so negative values come from numerical erros
     eigvals[eigvals < 0] = 0
 
-    # Generalized update
-    eigvals = (eigvals > 0) * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
-    eigvals[:, np.isclose(eigvals.sum(axis=0), 0)] = np.sqrt(sigma)
+    degenerate_idx = np.isclose(eigvals.sum(axis=1), 0)
 
     # Proximal step
+
+    # Generalized update
+    eigvals = (eigvals > 0) * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+
+    eigvals[degenerate_idx, :] = -np.sqrt(sigma)
 
     dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
     assert dvar.shape == _shape
@@ -125,7 +128,10 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
 
     # FIXME: I should actually remove all the eigenvectors with original eigenvalue 0,
     # as this is a GENERALIZED log-determinant, except if they are all zero.
-    return dvar + np.sqrt(sigma) / _shape[1]
+
+    dvar[degenerate_idx, :, :] += np.sqrt(sigma) / _shape[1]
+
+    return dvar
 
 
 def op_adj_dual(dualv: NDArray) -> NDArray:
