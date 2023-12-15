@@ -262,7 +262,7 @@ class GraphDictionary(BaseEstimator):
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        activations = activations - self.step_a(
+        activations = activations - self.step_a * (
             op_adj_activations(self.weights_, dual) @ combi_p + step / self.n_samples_
         )
 
