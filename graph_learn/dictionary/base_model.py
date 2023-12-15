@@ -239,9 +239,18 @@ class GraphDictionary(BaseEstimator):
         """
         laplacians = laplacian_squareform_vec(self.weights_)
 
-        # Dual step
-        # We apply the MC after the adjoint as n_samples >> n_combinantions
-        step = self.n_samples_ * op_adj_activations(self.weights_, dual) @ combi_p
+        # Smoothness
+        step = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
+        if self.window_size > 1:
+            step = np.repeat(
+                # average non-overlapping windows
+                step.reshape(self.n_atoms, -1, self.window_size).mean(2),
+                self.window_size,
+                axis=1,
+            )
+
+        # L1 regularization
+        step += self.l1_a
 
         if self.log_a > 0:
             step -= self.log_a / activations.sum(axis=0, keepdims=True)
@@ -251,21 +260,11 @@ class GraphDictionary(BaseEstimator):
                 np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0)
             )
 
-        smoothness = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
-        if self.window_size > 1:
-            smoothness = np.repeat(
-                # average non-overlapping windows
-                smoothness.reshape(self.n_atoms, -1, self.window_size).mean(2),
-                self.window_size,
-                axis=1,
-            )
-
-        # NOTE: the step might be divided by the operator norm
-        # FIXME: l1_a should not be divided by n_samples, so I am multiplying
-        step += smoothness + self.l1_a * self.n_samples_
-
         # Proximal and gradient step
-        activations = activations - self.step_a / self.n_samples_ * step
+        # NOTE: the step might be divided by the operator norm
+        activations = activations - self.step_a(
+            op_adj_activations(self.weights_, dual) @ combi_p + step / self.n_samples_
+        )
 
         # Projection
         activations[activations < 0] = 0
@@ -296,26 +295,22 @@ class GraphDictionary(BaseEstimator):
         Returns:
             NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
-        # FIXME: here I use activations (K x T), while for prox update I use activations_ @ combi_p.T (K x 2**k)
-        op_norm = op_weights_norm(activations=self.activations_, n_nodes=self.n_nodes_)
+        # FIXEDME: here I use activations (K x T), while for prox update I use activations_ @ combi_p.T (K x 2**k)
+        activations = self.activations_ @ combi_p.T
+        op_norm = op_weights_norm(activations=activations, n_nodes=self.n_nodes_)
 
-        smoothness = self._component_pdist_sq(self.activations_) / self.n_samples_
+        step = self._component_pdist_sq(self.activations_)
+        step += self.l1_w
 
         if self.ortho_w > 0:
             # grad_step = (
             #     np.ones((self.n_atoms, 1)) - np.eye(self.n_atoms)
             # ) @ self.weights_
-            grad_step = weights.sum(0, keepdims=True) - weights
-            grad_step *= self.ortho_w
-        else:
-            grad_step = 0
+            step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
 
         # Proximal update
         weights = weights - self.step_w / op_norm * (
-            op_adj_weights(self.activations_ @ combi_p.T, dual)  # Dual step
-            + grad_step
-            + smoothness  # Smoothness step
-            + self.l1_w  # L1 step
+            op_adj_weights(activations, dual) + step / self.n_samples_
         )
 
         # Projection
