@@ -127,6 +127,9 @@ class GraphDictionary(BaseEstimator):
             case _:
                 raise ValueError(f"Invalid init strategy {self.init_strategy}")
 
+        activations[activations < 0] = 0
+        activations[activations > 1] = 1
+
         if self.window_size > 1:
             activations = np.repeat(activations[:, :: self.window_size], self.window_size, axis=1)[
                 :, :n_samples
@@ -165,6 +168,8 @@ class GraphDictionary(BaseEstimator):
 
             case _:
                 raise ValueError(f"Invalid init strategy {self.init_strategy}")
+
+        weights[weights < 0] = 0
 
         return weights
 
