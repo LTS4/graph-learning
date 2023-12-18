@@ -180,3 +180,12 @@ def op_activations_norm(lapl: NDArray) -> float:
     if lapl.shape[0] == 1:
         return np.sqrt(np.sum(lapl**2))
     return svds(lapl.reshape(lapl.shape[0], -1), k=1, return_singular_vectors=False)[0]
+
+
+def squared_pdiffs(x: NDArray):
+    """Compute scaled nodewise differences, as used in graph ditionary smoothness"""
+    return square_to_vec(x[:, :, np.newaxis] - x[:, np.newaxis, :]) ** 2
+
+
+def dictionary_smoothness(coeffs: NDArray, weights: NDArray, signals: NDArray):
+    return np.sum(coeffs.T @ weights * squared_pdiffs(signals))

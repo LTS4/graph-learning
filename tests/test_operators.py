@@ -6,6 +6,7 @@ import pytest
 from numpy.random import default_rng
 
 from graph_learn.operators import (
+    dictionary_smoothness,
     laplacian_squareform,
     laplacian_squareform_adj,
     laplacian_squareform_adj_vec,
@@ -194,3 +195,27 @@ def test_operator_norm_activations(n_components, n_nodes, n_samples):
         activations = _activations
 
     assert np.isclose(estimate, alpha, rtol=1e-2)
+
+
+################################################################################
+# SMOOTHNESS
+
+
+def test_dictionary_smoothness():
+    """Verify the dictionary smoothness operator"""
+    for seed in range(1000):
+        rng = default_rng(seed)
+        n_components = rng.integers(1, 5)
+        n_nodes = rng.integers(10, 20)
+        n_samples = rng.integers(50, 500)
+
+        activations = rng.standard_normal((n_components, n_samples))
+        weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
+
+        signals = rng.standard_normal(size=(n_samples, n_nodes))
+        laplacians = laplacian_squareform_vec(weights)
+
+        assert np.allclose(
+            dictionary_smoothness(coeffs=activations, weights=weights, signals=signals),
+            np.einsum("knm,kt,tn,tm->", laplacians, activations, signals, signals),
+        )
