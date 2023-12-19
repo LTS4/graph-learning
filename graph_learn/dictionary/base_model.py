@@ -15,12 +15,14 @@ from graph_learn.evaluation import relative_error
 
 # from graph_learn import OptimizationError
 from graph_learn.operators import (
+    dictionary_smoothness,
     laplacian_squareform_vec,
+    op_activations_norm,
     op_adj_activations,
     op_adj_weights,
     op_weights_norm,
     prox_gdet_star,
-    square_to_vec,
+    squared_pdiffs,
 )
 
 from .utils import combinations_prob, powerset_matrix
@@ -67,6 +69,7 @@ class GraphDictionary(BaseEstimator):
 
         self.max_iter = max_iter
 
+        self.step = step
         self.step_a = step_a or step
         self.step_w = step_w or step
         self.step_dual = step_dual or step
@@ -180,7 +183,7 @@ class GraphDictionary(BaseEstimator):
         self.activations_ = self._init_activations(self.n_samples_)
         self.dual_ = np.zeros((2**self.n_atoms, self.n_nodes_, self.n_nodes_))
 
-        self._sq_pdiffs = self._pairwise_sq_diff(x)
+        self._sq_pdiffs = squared_pdiffs(x)
 
         self.converged_ = -1
         self.fit_time_ = -1
@@ -190,44 +193,13 @@ class GraphDictionary(BaseEstimator):
             index=np.arange(self.max_iter),
         )
 
-    def _pairwise_sq_diff(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
-        """Compute pairwise square differences between all signals, on all nodes
-
-        Args:
-            x (NDArray[np.float_]): Signals matrix of shape (n_samples, n_nodes)
-
-        Returns:
-            NDArray[np.float_]: Pairwise squared diferences on all edges of shape
-                (n_samples, n_edges), w/ ``n_edges = n_nodes * (n_nodes - 1) / 2``
-        """
-        # This works with continuous activations
-        pdiffs = x[:, np.newaxis, :] - x[:, :, np.newaxis]
-        return square_to_vec(pdiffs) ** 2
-
-    def _component_pdist_sq(
-        self, activations: NDArray[np.float_], x: NDArray[np.float_] = None
-    ) -> NDArray[np.float_]:
-        """Compute pairwise square distances on each componend, based on activations
-
-        Args:
-            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
-
-        Returns:
-            NDArray[np.float_]: Pairwise node squared distances of shape
-                (n_atoms, n_edges), w/ ``n_edges = n_nodes * (n_nodes - 1) / 2``
-        """
-        if x is None:
-            sq_pdiffs = self._sq_pdiffs
-        else:
-            sq_pdiffs = self._pairwise_sq_diff(x)
-        return activations @ sq_pdiffs
-
     def _update_activations(
         self,
         x: NDArray[np.float_],
         activations: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
+        op_norm=1,
     ) -> NDArray[np.float_]:
         """Update activations
 
@@ -242,10 +214,12 @@ class GraphDictionary(BaseEstimator):
         Returns:
             NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
         """
-        laplacians = laplacian_squareform_vec(self.weights_)
 
         # Smoothness
-        step = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
+        # laplacians = laplacian_squareform_vec(self.weights_)
+        # step = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
+        step = self.weights_ @ self._sq_pdiffs.T
+
         if self.window_size > 1:
             step = np.repeat(
                 # average non-overlapping windows
@@ -267,7 +241,7 @@ class GraphDictionary(BaseEstimator):
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        activations = activations - self.step_a * (
+        activations = activations - self.step_a / op_norm * (
             op_adj_activations(self.weights_, dual) @ combi_p + step / self.n_samples_
         )
 
@@ -287,6 +261,7 @@ class GraphDictionary(BaseEstimator):
         weights: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
+        op_norm=1,
     ) -> NDArray[np.float_]:
         """Update the weights of the model
 
@@ -300,11 +275,9 @@ class GraphDictionary(BaseEstimator):
         Returns:
             NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
-        # FIXEDME: here I use activations (K x T), while for prox update I use activations_ @ combi_p.T (K x 2**k)
         activations = self.activations_ @ combi_p.T
-        op_norm = op_weights_norm(activations=activations, n_nodes=self.n_nodes_)
 
-        step = self._component_pdist_sq(self.activations_)
+        step = self.activations_ @ self._sq_pdiffs
         step += self.l1_w
 
         if self.ortho_w > 0:
@@ -323,23 +296,32 @@ class GraphDictionary(BaseEstimator):
         return weights
 
     def _update_dual(
-        self, weights: NDArray[np.float_], activations: NDArray[np.float_], dual: NDArray[np.float_]
+        self,
+        weights: NDArray[np.float_],
+        activations: NDArray[np.float_],
+        combi_p: NDArray[np.float_],
+        dual: NDArray[np.float_],
+        op_norm=1,
     ):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
         # NOTE: Isn't it weird that activations have so little influence on the dual update?
+        # The scaling by n_samples is wrong: that would hold when working with separate instant laplacians. In this case
+        # I should scale each combination by its expected number of occurrencies
 
         # TODO: I should filter combinations that don't appear, but will they never appear?
         # Filtering would work for fixed activations
 
-        op_norm = op_weights_norm(
-            activations=activations, n_nodes=self.n_nodes_
-        )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights))
-        dual = dual + self.step_dual / op_norm * np.einsum(
-            "kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights)
+        dual += (
+            self.step_dual
+            / op_norm
+            * np.einsum("kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights))
         )
-        return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
+
+        sigma = self.step_dual / op_norm / self.n_samples_  # * combi_p.sum(1, keepdims=True)
+
+        return prox_gdet_star(dual, sigma=sigma)
 
     def _fit_step(self, x: NDArray[np.float_]) -> (float, float):
         combi_p = combinations_prob(self.activations_)
@@ -360,6 +342,7 @@ class GraphDictionary(BaseEstimator):
             # TODO: understand what is going on here
             # activations=2 * activations - self.activations_,
             activations=self.activations_,
+            combi_p=combi_p,
             dual=self.dual_,
         )
 
@@ -439,9 +422,9 @@ class GraphDictionary(BaseEstimator):
         # sum of L1 norm, orthogonality and smoothness
         weight_loss = (
             self.l1_w * np.abs(self.weights_).sum()  # L1
-            + np.sum(self.weights_ * self._component_pdist_sq(self.activations_, x))
-            / self.n_samples_  # smoothness
-        )
+            + dictionary_smoothness(self.activations_, self.weights_, x)
+        ) / self.n_samples_
+
         if self.ortho_w > 0:
             # gradient
             weight_loss += self.ortho_w * (
