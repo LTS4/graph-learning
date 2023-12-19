@@ -183,8 +183,6 @@ class GraphDictionary(BaseEstimator):
         self.activations_ = self._init_activations(self.n_samples_)
         self.dual_ = np.zeros((2**self.n_atoms, self.n_nodes_, self.n_nodes_))
 
-        self._sq_pdiffs = squared_pdiffs(x)
-
         self.converged_ = -1
         self.fit_time_ = -1
         self.history_ = pd.DataFrame(
@@ -195,7 +193,7 @@ class GraphDictionary(BaseEstimator):
 
     def _update_activations(
         self,
-        x: NDArray[np.float_],
+        sq_pdiffs: NDArray[np.float_],
         activations: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
@@ -216,9 +214,7 @@ class GraphDictionary(BaseEstimator):
         """
 
         # Smoothness
-        # laplacians = laplacian_squareform_vec(self.weights_)
-        # step = np.einsum("ktn,tn->kt", x @ laplacians, x) * self.smooth_a
-        step = self.weights_ @ self._sq_pdiffs.T
+        step = self.weights_ @ sq_pdiffs.T
 
         if self.window_size > 1:
             step = np.repeat(
@@ -257,7 +253,7 @@ class GraphDictionary(BaseEstimator):
 
     def _update_weights(
         self,
-        x: NDArray[np.float_],
+        sq_pdiffs: NDArray[np.float_],
         weights: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
@@ -277,7 +273,8 @@ class GraphDictionary(BaseEstimator):
         """
         activations = self.activations_ @ combi_p.T
 
-        step = self.activations_ @ self._sq_pdiffs
+        # Smoothness
+        step = self.activations_ @ sq_pdiffs
         step += self.l1_w
 
         if self.ortho_w > 0:
@@ -298,7 +295,6 @@ class GraphDictionary(BaseEstimator):
     def _update_dual(
         self,
         weights: NDArray[np.float_],
-        activations: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
         op_norm=1,
@@ -323,26 +319,23 @@ class GraphDictionary(BaseEstimator):
 
         return prox_gdet_star(dual, sigma=sigma)
 
-    def _fit_step(self, x: NDArray[np.float_]) -> (float, float):
-        combi_p = combinations_prob(self.activations_)
+    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> (float, float):
+        combi_p = combinations_prob(self.activations_, self._combinations)
 
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
         activations = self._update_activations(
-            x, self.activations_, combi_p=combi_p, dual=self.dual_
+            sq_pdiffs, self.activations_, combi_p=combi_p, dual=self.dual_
         )
-        weights = self._update_weights(x, self.weights_, combi_p=combi_p, dual=self.dual_)
+        weights = self._update_weights(sq_pdiffs, self.weights_, combi_p=combi_p, dual=self.dual_)
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
         self.dual_ = self._update_dual(
             weights=2 * weights - self.weights_,
             # weights=weights,
-            # TODO: understand what is going on here
-            # activations=2 * activations - self.activations_,
-            activations=self.activations_,
-            combi_p=combi_p,
+            combi_p=combinations_prob(activations, self._combinations),
             dual=self.dual_,
         )
 
@@ -362,13 +355,16 @@ class GraphDictionary(BaseEstimator):
         callback: Callable[[GraphDictionary, int]] = None,
     ) -> GraphDictionary:
         self._initialize(x)
+
+        sq_pdiffs = squared_pdiffs(x)
+
         if callback is not None:
             callback(self, 0)
 
         start = time()
         for i in range(self.max_iter):
             try:
-                self.history_.iloc[i] = a_rel_change, w_rel_change = self._fit_step(x)
+                self.history_.iloc[i] = a_rel_change, w_rel_change = self._fit_step(sq_pdiffs)
 
                 if (a_rel_change < self.tol) and (w_rel_change < self.tol):
                     self.converged_ = i
