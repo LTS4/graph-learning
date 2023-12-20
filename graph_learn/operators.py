@@ -118,7 +118,10 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # Generalized update
     eigvals = (eigvals > 0) * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
 
-    eigvals[degenerate_idx, :] = -np.sqrt(sigma)
+    try:
+        eigvals[degenerate_idx, :] = -np.sqrt(sigma[degenerate_idx])
+    except (TypeError, IndexError):
+        eigvals[degenerate_idx, :] = -np.sqrt(sigma)
 
     dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
     assert dvar.shape == _shape
@@ -126,8 +129,13 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
     # Note that the norm of the eigenvector is sqrt(n_nodes)
 
-    # FIXME: I should actually remove all the eigenvectors with original eigenvalue 0,
+    # FIXEDME: I should actually remove all the eigenvectors with original eigenvalue 0,
     # as this is a GENERALIZED log-determinant, except if they are all zero.
+
+    try:
+        sigma = sigma[degenerate_idx, :, np.newaxis]
+    except (TypeError, IndexError):
+        pass
 
     dvar[degenerate_idx, :, :] += np.sqrt(sigma) / _shape[1]
 
@@ -188,4 +196,4 @@ def squared_pdiffs(x: NDArray):
 
 
 def dictionary_smoothness(coeffs: NDArray, weights: NDArray, signals: NDArray):
-    return np.sum(coeffs.T @ weights * squared_pdiffs(signals))
+    return np.sum((coeffs.T @ weights) * squared_pdiffs(signals))
