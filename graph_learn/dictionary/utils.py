@@ -42,9 +42,12 @@ def combinations_prob(
     if pwset_mat is None:
         pwset_mat = powerset_matrix(activations.shape[0])
 
-    return np.stack(
-        [
-            np.prod(activations[combi], axis=0) * np.prod(1 - activations[~combi], axis=0)
-            for combi in pwset_mat.astype(bool).T
-        ]
+    # This is faster that broadcasting
+    return np.prod(
+        np.where(
+            pwset_mat[:, :, np.newaxis],
+            activations[:, np.newaxis, :],
+            1 - activations[:, np.newaxis, :],
+        ),
+        axis=0,
     )
