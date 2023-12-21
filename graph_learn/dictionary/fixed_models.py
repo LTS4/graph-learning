@@ -110,8 +110,13 @@ class FixedActivations(GraphDictionary):
                 f"Activation prior must be real number or a numpy array, got {type(self.activation_prior)}"
             )
 
+        return activations
+
     def _update_activations(self, *_args, **_kwargs) -> NDArray:
         return self.activations_
+
+    def predict(self, x) -> NDArray[np.float_]:
+        raise NotImplementedError
 
 
 def fixw_from_full(model: GraphDictionary) -> FixedWeights:
