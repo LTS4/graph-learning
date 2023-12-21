@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 
 from graph_learn.operators import laplacian_squareform_vec, op_weights_norm
 
-from .base_model import GraphDictionary
+from . import GraphDictionary
 
 
 class FixedWeights(GraphDictionary):
