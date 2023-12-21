@@ -26,7 +26,7 @@ from graph_learn.operators import (
 )
 
 
-class GraphDictionary(BaseEstimator):
+class GraphDictExact(BaseEstimator):
     """Graph components learning original method"""
 
     def __init__(
