@@ -476,11 +476,22 @@ class GraphDictExact(BaseEstimator):
 
     def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Predict activations for a given signal"""
-        activations = self._init_activations(x.shape[0])
+        n_samples, n_nodes = x.shape
+        if n_nodes != self.n_nodes_:
+            raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
+
+        activations = self._init_activations(n_samples)
+        dual = np.zeros((n_samples, self.n_nodes_, self.n_nodes_))
+
+        op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
+
         sq_pdiffs = squared_pdiffs(x)
 
         for _ in range(self.max_iter):
-            activations_u = self._update_activations(sq_pdiffs, activations, dual=self.dual_)
+            activations_u = self._update_activations(sq_pdiffs, activations, dual=dual)
+
+            op_norm = op_act_norm * op_weights_norm(activations_u, self.n_nodes_)
+            dual = self._update_dual(self.weights_, activations_u, dual, op_norm=1 / op_norm)
 
             if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
                 return activations_u
