@@ -332,8 +332,8 @@ class GraphDictExact(BaseEstimator):
         x: NDArray[np.float_],
         _y=None,
         *,
-        callback: Callable[[GraphDictionary, int]] = None,
-    ) -> GraphDictionary:
+        callback: Callable[[GraphDictExact, int]] = None,
+    ) -> GraphDictExact:
         self._initialize(x)
 
         sq_pdiffs = squared_pdiffs(x)
@@ -425,18 +425,18 @@ class GraphDictExact(BaseEstimator):
         return weight_loss + (activation_loss - loggdet)
 
     def fit(
-        self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictionary, int]] = None
+        self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictExact, int]] = None
     ):
         """Fit the model to the data
 
         Args:
             x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
             y (None, optional): Ignored. Defaults to None.
-            callback (Callable[[GraphDictionary, int]], optional): Callback function
+            callback (Callable[[GraphDictExact, int]], optional): Callback function
                 called at each iteration. Defaults to None.
 
         Returns:
-            GraphDictionary: self
+            GraphDictExact: self
         """
         if self.n_init == 1:
             self._single_fit(x, callback=callback)
