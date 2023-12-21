@@ -1,6 +1,7 @@
 """Graph components learning original method"""
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from time import time
 from typing import Callable
 from warnings import warn
@@ -18,17 +19,12 @@ from graph_learn.operators import (
     dictionary_smoothness,
     laplacian_squareform_vec,
     op_activations_norm,
-    op_adj_activations,
-    op_adj_weights,
     op_weights_norm,
-    prox_gdet_star,
     squared_pdiffs,
 )
 
-from .utils import combinations_prob, powerset_matrix
 
-
-class GraphDictionary(BaseEstimator):
+class GraphDictBase(ABC, BaseEstimator):
     """Graph components learning original method"""
 
     def __init__(
@@ -89,13 +85,11 @@ class GraphDictionary(BaseEstimator):
 
         self.verbose = verbose
 
-        # Combinations are binary representation of their column index
-        self._combinations = powerset_matrix(n_atoms=self.n_atoms)  # shape (n_atoms, 2**n_atoms)
         self._sq_pdiffs: NDArray[np.float_]  # shape (n_atoms, n_edges )
 
         self.activations_: NDArray[np.float_]  # shape (n_atoms, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
-        self.dual_: NDArray[np.float_]  # shape (2**n_atoms, n_nodes, n_nodes)
+        self.dual_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
         self.n_samples_: int
         self.scale_: float
@@ -176,12 +170,15 @@ class GraphDictionary(BaseEstimator):
 
         return weights
 
+    def _init_dual(self, n_samples: int):
+        return np.zeros((n_samples, self.n_nodes_, self.n_nodes_))
+
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
 
         self.weights_ = self._init_weigths()
         self.activations_ = self._init_activations(self.n_samples_)
-        self.dual_ = np.zeros((2**self.n_atoms, self.n_nodes_, self.n_nodes_))
+        self.dual_ = self._init_dual(self.n_samples_)
 
         self.converged_ = -1
         self.fit_time_ = -1
@@ -191,71 +188,33 @@ class GraphDictionary(BaseEstimator):
             index=np.arange(self.max_iter),
         )
 
+    @abstractmethod
     def _update_activations(
         self,
         sq_pdiffs: NDArray[np.float_],
         activations: NDArray[np.float_],
-        combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
         op_norm=1,
     ) -> NDArray[np.float_]:
         """Update activations
 
         Args:
-            x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
+            sq_pdiffs (NDArray[np.float_]): Edgewise squared dstances betweens
+                signal matrix of shape (n_edges, n_nodes)
             activations (NDArray[np.float_]): Current activations of shape (n_atoms, n_samples)
-            combi_p (NDArray[np.float_]): Probabilities of combinations for each sample.
-                Array of shape (2**n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
-                of shape (2**n_atoms, n_nodes, n_nodes)
+                of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
             NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
         """
+        raise NotImplementedError
 
-        # Smoothness
-        step = self.weights_ @ sq_pdiffs.T
-
-        if self.window_size > 1:
-            step = np.repeat(
-                # average non-overlapping windows
-                step.reshape(self.n_atoms, -1, self.window_size).mean(2),
-                self.window_size,
-                axis=1,
-            )
-
-        # L1 regularization
-        step += self.l1_a
-
-        if self.log_a > 0:
-            step -= self.log_a / activations.sum(axis=0, keepdims=True)
-
-        if self.l1_diff_a > 0:
-            step -= self.l1_diff_a * (
-                np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0)
-            )
-
-        # Proximal and gradient step
-        # NOTE: the step might be divided by the operator norm
-        activations = activations - self.step_a / op_norm * (
-            op_adj_activations(self.weights_, dual) @ combi_p + step / self.n_samples_
-        )
-
-        # Projection
-        activations[activations < 0] = 0
-        activations[activations > 1] = 1
-
-        if np.allclose(activations, 0):
-            warn("All activations dropped to 0", UserWarning)
-            activations.fill(1)
-
-        return activations
-
+    @abstractmethod
     def _update_weights(
         self,
         sq_pdiffs: NDArray[np.float_],
         weights: NDArray[np.float_],
-        combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
         op_norm=1,
     ) -> NDArray[np.float_]:
@@ -263,80 +222,42 @@ class GraphDictionary(BaseEstimator):
 
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
-            combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
-                for each sample. Array of shape (2**n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
-                of shape (2**n_atoms, n_nodes, n_nodes)
+                of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
             NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
-        activations = self.activations_ @ combi_p.T
+        raise NotImplementedError
 
-        # Smoothness
-        step = self.activations_ @ sq_pdiffs
-        step += self.l1_w
-
-        if self.ortho_w > 0:
-            # grad_step = (
-            #     np.ones((self.n_atoms, 1)) - np.eye(self.n_atoms)
-            # ) @ self.weights_
-            step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
-
-        # Proximal update
-        weights = weights - self.step_w / op_norm * (
-            op_adj_weights(activations, dual) + step / self.n_samples_
-        )
-
-        # Projection
-        weights[weights < 0] = 0
-        return weights
-
+    @abstractmethod
     def _update_dual(
         self,
         weights: NDArray[np.float_],
-        combi_p: NDArray[np.float_],
+        activations: NDArray[np.float_],
         dual: NDArray[np.float_],
         op_norm=1,
     ):
-        # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
-        # z1 -= step * prox_h(z1 / step, 1 / step)
-
-        # NOTE: Isn't it weird that activations have so little influence on the dual update?
-        # The scaling by n_samples is wrong: that would hold when working with separate instant laplacians. In this case
-        # I should scale each combination by its expected number of occurrencies
-
-        # TODO: I should filter combinations that don't appear, but will they never appear?
-        # Filtering would work for fixed activations
-
-        dual += (
-            self.step_dual
-            / op_norm
-            * np.einsum("kc,knm->cnm", self._combinations, laplacian_squareform_vec(weights))
-        )
-
-        sigma = self.step_dual / op_norm / self.n_samples_  # * combi_p.sum(1, keepdims=True)
-
-        return prox_gdet_star(dual, sigma=sigma)
+        raise NotImplementedError
 
     def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> (float, float):
-        combi_p = combinations_prob(self.activations_, self._combinations)
-
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
-        activations = self._update_activations(
-            sq_pdiffs, self.activations_, combi_p=combi_p, dual=self.dual_
-        )
-        weights = self._update_weights(sq_pdiffs, self.weights_, combi_p=combi_p, dual=self.dual_)
+        activations = self._update_activations(sq_pdiffs, self.activations_, dual=self.dual_)
+        weights = self._update_weights(sq_pdiffs, self.weights_, dual=self.dual_)
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
+        # NOTE: I tested overshoot and solutions are either exactly the same, or slightly worse
+        op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
+            activations, self.n_nodes_
+        )
         self.dual_ = self._update_dual(
-            weights=2 * weights - self.weights_,
-            # weights=weights,
-            combi_p=combinations_prob(activations, self._combinations),
+            weights=weights,
+            activations=activations,
             dual=self.dual_,
+            op_norm=1 / op_norm,
         )
 
         a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
@@ -352,8 +273,8 @@ class GraphDictionary(BaseEstimator):
         x: NDArray[np.float_],
         _y=None,
         *,
-        callback: Callable[[GraphDictionary, int]] = None,
-    ) -> GraphDictionary:
+        callback: Callable[[GraphDictBase, int]] = None,
+    ) -> GraphDictBase:
         self._initialize(x)
 
         sq_pdiffs = squared_pdiffs(x)
@@ -416,10 +337,9 @@ class GraphDictionary(BaseEstimator):
             return np.inf
 
         # sum of L1 norm, orthogonality and smoothness
-        weight_loss = (
-            self.l1_w * np.abs(self.weights_).sum()  # L1
-            + dictionary_smoothness(self.activations_, self.weights_, x)
-        ) / self.n_samples_
+        weight_loss = self.l1_w * np.abs(self.weights_).sum() + dictionary_smoothness(  # L1
+            self.activations_, self.weights_, x
+        )
 
         if self.ortho_w > 0:
             # gradient
@@ -437,29 +357,27 @@ class GraphDictionary(BaseEstimator):
             )
 
         # Sum of log determinants
-        combi_p = combinations_prob(self.activations_)
-
         eigvals = np.linalg.eigvalsh(
-            np.einsum("kc,knm->cnm", self._combinations, laplacian_squareform_vec(self.weights_))
+            np.einsum("kc,knm->cnm", self.activations_, laplacian_squareform_vec(self.weights_))
         )
         # shape: (n_samples, n_combi) x (n_combi,)
-        loggdet = np.sum(combi_p.T @ np.log(np.where(eigvals > 0, eigvals, 1)).sum(-1))
+        loggdet = np.sum(np.log(np.where(eigvals > 0, eigvals, 1)).sum(-1))
 
-        return weight_loss + (activation_loss - loggdet) / self.n_samples_
+        return weight_loss + (activation_loss - loggdet)
 
     def fit(
-        self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictionary, int]] = None
+        self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictBase, int]] = None
     ):
         """Fit the model to the data
 
         Args:
             x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
             y (None, optional): Ignored. Defaults to None.
-            callback (Callable[[GraphDictionary, int]], optional): Callback function
+            callback (Callable[[GraphDictBase, int]], optional): Callback function
                 called at each iteration. Defaults to None.
 
         Returns:
-            GraphDictionary: self
+            GraphDictBase: self
         """
         if self.n_init == 1:
             self._single_fit(x, callback=callback)
@@ -497,19 +415,7 @@ class GraphDictionary(BaseEstimator):
 
         return self
 
+    @abstractmethod
     def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
         """Predict activations for a given signal"""
-        activations = self._init_activations(x.shape[0])
-
-        for _ in range(self.max_iter):
-            combi_p = combinations_prob(activations)
-            activations_u = self._update_activations(
-                x, activations, combi_p=combi_p, dual=self.dual_
-            )
-
-            if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
-                return activations_u
-
-            activations = activations_u
-
-        return activations
+        raise NotImplementedError
