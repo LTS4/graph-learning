@@ -109,14 +109,17 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # _eigvals = eigvals.copy()
 
     # Input shall be SPD, so negative values come from numerical erros
-    eigvals[eigvals < 0] = 0
+    # FIXME: I don't think the input is always SPD
+    # eigvals[eigvals < 0] = 0
+    zeros = np.isclose(eigvals, 0)
 
-    degenerate_idx = np.isclose(eigvals.sum(axis=1), 0)
+    # degenerate_idx = np.isclose(eigvals.sum(axis=1), 0)
+    degenerate_idx = np.all(zeros, axis=1)
 
     # Proximal step
 
     # Generalized update
-    eigvals = (eigvals > 0) * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+    eigvals = ~zeros * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
 
     try:
         eigvals[degenerate_idx, :] = -np.sqrt(sigma[degenerate_idx])
@@ -136,7 +139,6 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
         sigma = sigma[degenerate_idx, :, np.newaxis]
     except (TypeError, IndexError):
         pass
-
     dvar[degenerate_idx, :, :] += np.sqrt(sigma) / _shape[1]
 
     return dvar
@@ -197,3 +199,19 @@ def squared_pdiffs(x: NDArray):
 
 def dictionary_smoothness(coeffs: NDArray, weights: NDArray, signals: NDArray):
     return np.sum((coeffs.T @ weights) * squared_pdiffs(signals))
+
+
+def simplex_projection(x: NDArray):
+    """Project rows of x onto the unitary simplex.
+
+    Algorithm from Condat, 2014.
+
+    Args:
+        x (NDArray): Array of shape (n_samples, n_dim)
+    """
+    out = -np.sort(-x, axis=1)
+    partials = (np.cumsum(out, axis=1) - 1) / np.arange(1, x.shape[1] + 1)[np.newaxis, :]
+    tokeep = np.sum(partials < out, axis=1) - 1
+    out = x - partials[np.arange(x.shape[0]), tokeep, np.newaxis]
+    out[out < 0] = 0
+    return out
