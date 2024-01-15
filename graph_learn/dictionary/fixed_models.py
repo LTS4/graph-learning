@@ -51,35 +51,41 @@ class FixedWeights(GraphDictionary):
     def _update_weights(self, *_args, **_kwargs) -> NDArray:
         return self.weights_
 
-    def _update_dual(self, weights: NDArray, activations: NDArray, dual: NDArray):
-        op_norm = op_weights_norm(
-            activations=activations, n_nodes=self.n_nodes_
-        )  # * op_activations_norm(lapl=laplacian_squareform_vec(weights))
+    # def _update_dual(
+    #     self,
+    #     weights: NDArray[np.float_],
+    #     combi_p: NDArray[np.float_],
+    #     dual: NDArray[np.float_],
+    #     op_norm=1,
+    # ):
+    #     # return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
+    #     sigma = self.step_dual / op_norm  # / self.n_samples_
 
-        # return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
-        sigma = self.step_dual / op_norm / self.n_samples_
+    #     combi_e = combi_p.sum(1)
+    #     active = combi_e > 0
+    #     active[0] = 0  # This ignores the empty component
 
-        _shape = dual.shape
-        eigvals = np.nanmean(
-            np.where(self._eigvecs, dual @ self._eigvecs / self._eigvecs, np.nan), axis=1
-        )
-        eigvals += self.step_dual / op_norm * self._eigvals
+    #     _shape = dual.shape
+    #     eigvals = np.nanmean(
+    #         np.where(self._eigvecs, dual @ self._eigvecs / self._eigvecs, np.nan), axis=1
+    #     )
+    #     eigvals += self.step_dual / op_norm * self._eigvals
 
-        # Input shall be SPD, so negative values come from numerical erros
-        eigvals[eigvals < 0] = 0
+    #     # Input shall be SPD, so negative values come from numerical erros
+    #     eigvals[eigvals < 0] = 0
 
-        # Proximal step
-        # eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
-        eigvals -= np.sqrt(eigvals**2 + 4 * sigma)
-        eigvals /= 2
-        dual = np.stack(
-            [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, self._eigvecs)]
-        )
-        assert dual.shape == _shape
+    #     # Proximal step
+    #     # eigvals = (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
+    #     eigvals -= np.sqrt(eigvals**2 + 4 * sigma)
+    #     eigvals /= 2
+    #     dual = np.stack(
+    #         [eigvec @ np.diag(eigval) @ eigvec.T for eigval, eigvec in zip(eigvals, self._eigvecs)]
+    #     )
+    #     assert dual.shape == _shape
 
-        # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
-        # Note that the norm of the eigenvector is sqrt(n_nodes)
-        return dual + np.sqrt(sigma) / _shape[1]
+    #     # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
+    #     # Note that the norm of the eigenvector is sqrt(n_nodes)
+    #     return dual + np.sqrt(sigma) / _shape[1]
 
     def fit(self, *_args, **_kwargs) -> "FixedWeights":
         return super().fit(*_args, **_kwargs)
@@ -111,6 +117,9 @@ class FixedActivations(GraphDictionary):
             )
 
         return activations
+
+    def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float_]:
+        return self.combi_p_
 
     def _update_activations(self, *_args, **_kwargs) -> NDArray:
         return self.activations_
