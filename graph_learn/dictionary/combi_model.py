@@ -89,6 +89,9 @@ class GraphDictionary(GraphDictBase):
         super()._initialize(x)
 
         self.combi_p_ = combinations_prob(self.activations_, self._combinations)
+        # self.combi_p_[0] = 0
+        # self.combi_p_[1:] = simplex_projection(self.combi_p_[1:].T).T
+        # self.activations_ = self._combinations @ self.combi_p_
 
     def _update_combi_p(
         self,
@@ -114,11 +117,12 @@ class GraphDictionary(GraphDictBase):
         ) + np.sum(np.log(1 / np.where(eigmask, eigvals, 1)), axis=1, keepdims=True)
         step[1:] -= dual_step
 
+        # FIXME: to be valid combinations prob it is not enough to be in the simplex
         # proximal update (project to simplex)
         combi_p = combi_p - step_size * step
 
-        # combi_p = simplex_projection(combi_p.T).T
-        combi_p[1:] = simplex_projection(combi_p[1:].T).T
+        combi_p = simplex_projection(combi_p.T).T
+        # combi_p[1:] = simplex_projection(combi_p[1:].T).T
 
         return combi_p
 
