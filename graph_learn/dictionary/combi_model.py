@@ -4,7 +4,6 @@ from __future__ import annotations
 from warnings import warn
 
 import numpy as np
-from numpy.linalg import eigvalsh
 from numpy.random import RandomState
 from numpy.typing import NDArray
 
@@ -14,7 +13,6 @@ from graph_learn.evaluation import relative_error
 from graph_learn.operators import (
     laplacian_squareform_vec,
     op_adj_weights,
-    op_weights_norm,
     prox_gdet_star,
     simplex_projection,
     squared_pdiffs,
@@ -271,6 +269,8 @@ class GraphDictionary(GraphDictBase):
         active = combi_e > 0
         active[0] = 0  # This ignores the empty component
 
+        # FIXME: with a big sigma the laplacian squareform vec completely overrides the dual
+        # variable
         dual = dual.copy()
         eigvals = np.zeros(dual.shape[:2])
         (dual[active, :, :], eigvals[active, :]) = prox_gdet_star(
@@ -311,18 +311,19 @@ class GraphDictionary(GraphDictBase):
 
         # dual update
         # op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
-        #     self._combinations.astype(float), self.n_nodes_
+        #     (self._combinations * combi_p.sum(axis=1)[np.newaxis, :])[:, 1:], self.n_nodes_
         # )
+        # op_norm=1
+        # / op_weights_norm(
+        #     (self._combinations * combi_p.sum(axis=1)[np.newaxis, :])[:, 1:], self.n_nodes_
+        # )
+        op_norm = 1
 
         self.dual_, self.dual_eigvals_ = self._update_dual(
             weights=weights,
             combi_p=combi_p,
             dual=self.dual_,
-            op_norm=1
-            / op_weights_norm(
-                (self._combinations * combi_p.sum(axis=1)[np.newaxis, :])[:, 1:], self.n_nodes_
-            ),
-            # op_norm=1 / op_norm,
+            op_norm=1 / op_norm,
         )
 
         a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
