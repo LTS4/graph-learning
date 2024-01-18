@@ -93,7 +93,9 @@ def laplacian_squareform_adj_vec(laplacians: NDArray[np.float_]) -> NDArray[np.f
     return square_to_vec(laplacians)
 
 
-def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]:
+def prox_gdet_star(
+    dvar: NDArray[np.float_], sigma: float, return_eigvals: bool = False
+) -> NDArray[np.float_] | tuple[NDArray[np.float_], NDArray[np.float_]]:
     """Proximal operator of the Moreau's transpose of negative generalized log-determinant
 
     Args:
@@ -104,7 +106,7 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
         NDArray[np.float_]: Proximal point
     """
     _shape = dvar.shape
-    # I schould identify unique Laplacians, to speed-up computations
+    # I should identify unique Laplacians, to speed-up computations
     eigvals, eigvecs = eigh(dvar)
     # _eigvals = eigvals.copy()
 
@@ -121,25 +123,24 @@ def prox_gdet_star(dvar: NDArray[np.float_], sigma: float) -> NDArray[np.float_]
     # Generalized update
     eigvals = ~zeros * (eigvals - np.sqrt(eigvals**2 + 4 * sigma)) / 2
 
-    try:
-        eigvals[degenerate_idx, :] = -np.sqrt(sigma[degenerate_idx])
-    except (TypeError, IndexError):
-        eigvals[degenerate_idx, :] = -np.sqrt(sigma)
+    if degenerate_idx.any():
+        try:
+            eigvals[degenerate_idx, :] = -np.sqrt(sigma[degenerate_idx])
+        except (TypeError, IndexError):
+            eigvals[degenerate_idx, :] = -np.sqrt(sigma)
+
+        # # identify const eigenvector and set its eigval to zero again
+        eigvecs[degenerate_idx] -= np.diag(np.ones(_shape[1] - 1), 1)[np.newaxis, ...]
+        eigvecs[degenerate_idx] /= np.sqrt(2)
+
+        eigvecs[degenerate_idx, np.arange(_shape[1]), 0] = np.ones(_shape[1]) / np.sqrt(_shape[1])
+        eigvals[degenerate_idx, 0] = 0
 
     dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
     assert dvar.shape == _shape
 
-    # Remove constant eignevector. Initial eigval was 0, with prox step is  -np.sqrt(sigma)
-    # Note that the norm of the eigenvector is sqrt(n_nodes)
-
-    # FIXEDME: I should actually remove all the eigenvectors with original eigenvalue 0,
-    # as this is a GENERALIZED log-determinant, except if they are all zero.
-
-    try:
-        sigma = sigma[degenerate_idx, :, np.newaxis]
-    except (TypeError, IndexError):
-        pass
-    dvar[degenerate_idx, :, :] += np.sqrt(sigma) / _shape[1]
+    if return_eigvals:
+        return dvar, eigvals
 
     return dvar
 
