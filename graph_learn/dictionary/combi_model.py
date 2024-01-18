@@ -116,7 +116,7 @@ class GraphDictionary(GraphDictBase):
         eigmask = neg_dual_eigvals > 1e-8
         dual_step = eigmask.sum(1, keepdims=True) * np.log(
             np.where((summed := combi_p[1:].sum(1, keepdims=True)) > 1e-8, summed, 1)
-        ) + np.sum(np.log(1 / np.where(eigmask, neg_dual_eigvals, 1)), axis=1, keepdims=True)
+        ) - np.sum(np.log(np.where(eigmask, neg_dual_eigvals, 1)), axis=1, keepdims=True)
         step[1:] -= dual_step
 
         # FIXME: to be valid combinations prob it is not enough to be in the simplex
@@ -191,7 +191,7 @@ class GraphDictionary(GraphDictBase):
             (0, 2, 1)
         ) @ (
             eigmask.sum(1) * np.log(np.where((summed := combi_p.sum(1)) > 1e-8, summed, 1))
-            + np.sum(np.log(1 / np.where(eigmask, neg_dual_eigvals, 1)), axis=1)
+            - np.sum(np.log(np.where(eigmask, neg_dual_eigvals, 1)), axis=1)
         )
 
         # Proximal and gradient step
