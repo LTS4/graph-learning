@@ -240,10 +240,7 @@ class GraphDictionary(GraphDictBase):
         step += self.l2_w * self.weights_
 
         if self.ortho_w > 0:
-            # grad_step = (
-            #     np.ones((self.n_atoms, 1)) - np.eye(self.n_atoms)
-            # ) @ self.weights_
-            step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
+            step += self.ortho_w * (weights.sum(0, keepdims=True) - weights)
 
         dual_step = op_adj_weights(self._combinations, dual)
 
