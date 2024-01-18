@@ -45,13 +45,13 @@ class GraphDictionary(GraphDictBase):
         step_w: float = None,
         step_dual: float = None,
         tol: float = 0.001,
-        reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
         activation_prior: float | NDArray[np.float_] = None,
         verbose: int = 0,
+        combination_update: bool = False,
     ) -> None:
         super().__init__(
             n_atoms,
@@ -69,7 +69,6 @@ class GraphDictionary(GraphDictBase):
             step_w=step_w,
             step_dual=step_dual,
             tol=tol,
-            reduce_step_on_plateau=reduce_step_on_plateau,
             random_state=random_state,
             init_strategy=init_strategy,
             n_init=n_init,
@@ -81,6 +80,7 @@ class GraphDictionary(GraphDictBase):
         # Combinations are binary representation of their column index
         self._combinations = powerset_matrix(n_atoms=self.n_atoms)  # shape (n_atoms, 2**n_atoms)
         self.combi_p_: NDArray[np.float_]
+        self.combination_update = combination_update
 
     def _init_dual(self, n_samples: int):
         return super()._init_dual(2**self.n_atoms)
@@ -287,13 +287,14 @@ class GraphDictionary(GraphDictBase):
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
 
-        # activations = self._update_activations(
-        #     sq_pdiffs, self.activations_, combi_p=self.combi_p_, dual=self.dual_
-        # )
-        # combi_p = combinations_prob(activations, self._combinations)
-
-        combi_p = self._update_combi_p(sq_pdiffs, combi_p=self.combi_p_, dual=self.dual_)
-        activations = self._combinations @ combi_p
+        if self.combination_update:
+            combi_p = self._update_combi_p(sq_pdiffs, combi_p=self.combi_p_, dual=self.dual_)
+            activations = self._combinations @ combi_p
+        else:
+            activations = self._update_activations(
+                sq_pdiffs, self.activations_, combi_p=self.combi_p_, dual=self.dual_
+            )
+            combi_p = combinations_prob(activations, self._combinations)
 
         weights = self._update_weights(
             sq_pdiffs, self.weights_, combi_p=self.combi_p_, dual=self.dual_
@@ -336,12 +337,14 @@ class GraphDictionary(GraphDictBase):
         combi_p = combinations_prob(activations)
 
         for _ in range(self.max_iter):
-            # combi_p = combinations_prob(activations)
-            # activations_u = self._update_activations(
-            #     sq_pdiffs, activations, combi_p=combi_p, dual=self.dual_
-            # )
-            combi_p = self._update_combi_p(sq_pdiffs, combi_p=combi_p, dual=self.dual_)
-            activations_u = self._combinations @ combi_p
+            if self.combination_update:
+                combi_p = self._update_combi_p(sq_pdiffs, combi_p=combi_p, dual=self.dual_)
+                activations_u = self._combinations @ combi_p
+            else:
+                activations_u = self._update_activations(
+                    sq_pdiffs, activations, combi_p=combi_p, dual=self.dual_
+                )
+                combi_p = combinations_prob(activations)
 
             if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
                 return activations_u
