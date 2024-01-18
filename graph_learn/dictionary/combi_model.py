@@ -79,8 +79,10 @@ class GraphDictionary(GraphDictBase):
 
         # Combinations are binary representation of their column index
         self._combinations = powerset_matrix(n_atoms=self.n_atoms)  # shape (n_atoms, 2**n_atoms)
-        self.combi_p_: NDArray[np.float_]
         self.combination_update = combination_update
+
+        self.combi_p_: NDArray[np.float_]
+        self.dual_eigvals_: NDArray[np.float_]
 
     def _init_dual(self, n_samples: int):
         return super()._init_dual(2**self.n_atoms)
@@ -89,6 +91,8 @@ class GraphDictionary(GraphDictBase):
         super()._initialize(x)
 
         self.combi_p_ = combinations_prob(self.activations_, self._combinations)
+        self.dual_eigvals_ = np.zeros(self.dual_.shape[:2])
+
         # self.combi_p_[0] = 0
         # self.combi_p_[1:] = simplex_projection(self.combi_p_[1:].T).T
         # self.activations_ = self._combinations @ self.combi_p_
@@ -97,7 +101,7 @@ class GraphDictionary(GraphDictBase):
         self,
         sq_pdiffs: NDArray,
         combi_p: NDArray,
-        dual: NDArray,
+        neg_dual_eigvals: NDArray,
     ) -> NDArray[np.float_]:
         # we do not work with the empty component
         # FIXME: now the steps are on a similar scale, but I don't know why, nor if it is correct
@@ -107,14 +111,14 @@ class GraphDictionary(GraphDictBase):
         step = np.zeros_like(combi_p)
 
         # smoothness
-
         step[1:] = inst_weights @ sq_pdiffs.T  # / inst_weights.sum(1, keepdims=True)
+
         # dual step
-        eigvals = -eigvalsh(dual[1:, :, :])
-        eigmask = eigvals > 0
+        neg_dual_eigvals = neg_dual_eigvals[1:]
+        eigmask = neg_dual_eigvals > 1e-8
         dual_step = eigmask.sum(1, keepdims=True) * np.log(
-            np.where((summed := combi_p[1:].sum(1, keepdims=True)) > 1e-16, summed, 1)
-        ) + np.sum(np.log(1 / np.where(eigmask, eigvals, 1)), axis=1, keepdims=True)
+            np.where((summed := combi_p[1:].sum(1, keepdims=True)) > 1e-8, summed, 1)
+        ) + np.sum(np.log(1 / np.where(eigmask, neg_dual_eigvals, 1)), axis=1, keepdims=True)
         step[1:] -= dual_step
 
         # FIXME: to be valid combinations prob it is not enough to be in the simplex
@@ -131,7 +135,7 @@ class GraphDictionary(GraphDictBase):
         sq_pdiffs: NDArray[np.float_],
         activations: NDArray[np.float_],
         combi_p: NDArray[np.float_],
-        dual: NDArray[np.float_],
+        neg_dual_eigvals: NDArray[np.float_],
         op_norm=1,
     ) -> NDArray[np.float_]:
         # pylint: disable=arguments-renamed
@@ -183,14 +187,13 @@ class GraphDictionary(GraphDictBase):
         inter = inter.prod(1)
 
         # dual step
-        eigvals = -eigvalsh(dual)
-        eigmask = eigvals > 1e-8
+        eigmask = neg_dual_eigvals > 1e-8
 
         dual_step = (inter * (2 * self._combinations[:, :, np.newaxis] - 1)).transpose(
             (0, 2, 1)
         ) @ (
-            eigmask.sum(1) * np.log(np.where((summed := combi_p.sum(1)) > 1e-16, summed, 1))
-            + np.sum(np.log(1 / np.where(eigmask, eigvals, 1)), axis=1)
+            eigmask.sum(1) * np.log(np.where((summed := combi_p.sum(1)) > 1e-8, summed, 1))
+            + np.sum(np.log(1 / np.where(eigmask, neg_dual_eigvals, 1)), axis=1)
         )
 
         # Proximal and gradient step
@@ -257,7 +260,7 @@ class GraphDictionary(GraphDictBase):
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
         op_norm=1,
-    ):
+    ) -> tuple[NDArray, NDArray]:
         # pylint: disable=arguments-renamed
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
@@ -269,13 +272,15 @@ class GraphDictionary(GraphDictBase):
         active[0] = 0  # This ignores the empty component
 
         dual = dual.copy()
-        dual[active, :, :] = prox_gdet_star(
+        eigvals = np.zeros(dual.shape[:2])
+        (dual[active, :, :], eigvals[active, :]) = prox_gdet_star(
             dual[active, :, :]
             + sigma * laplacian_squareform_vec(self._combinations[:, active].T @ weights),
             sigma=sigma * combi_e[active, np.newaxis],
+            return_eigvals=True,
         )
 
-        return dual
+        return dual, eigvals
 
     def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> (float, float):
         # combi_p = combinations_prob(self.activations_, self._combinations)
@@ -285,11 +290,18 @@ class GraphDictionary(GraphDictBase):
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
 
         if self.combination_update:
-            combi_p = self._update_combi_p(sq_pdiffs, combi_p=self.combi_p_, dual=self.dual_)
+            combi_p = self._update_combi_p(
+                sq_pdiffs,
+                combi_p=self.combi_p_,
+                neg_dual_eigvals=-self.dual_eigvals_,
+            )
             activations = self._combinations @ combi_p
         else:
             activations = self._update_activations(
-                sq_pdiffs, self.activations_, combi_p=self.combi_p_, dual=self.dual_
+                sq_pdiffs,
+                self.activations_,
+                combi_p=self.combi_p_,
+                neg_dual_eigvals=-self.dual_eigvals_,
             )
             combi_p = combinations_prob(activations, self._combinations)
 
@@ -302,7 +314,7 @@ class GraphDictionary(GraphDictBase):
         #     self._combinations.astype(float), self.n_nodes_
         # )
 
-        self.dual_ = self._update_dual(
+        self.dual_, self.dual_eigvals_ = self._update_dual(
             weights=weights,
             combi_p=combi_p,
             dual=self.dual_,
@@ -335,11 +347,18 @@ class GraphDictionary(GraphDictBase):
 
         for _ in range(self.max_iter):
             if self.combination_update:
-                combi_p = self._update_combi_p(sq_pdiffs, combi_p=combi_p, dual=self.dual_)
+                combi_p = self._update_combi_p(
+                    sq_pdiffs,
+                    combi_p=combi_p,
+                    neg_dual_eigvals=-self.dual_eigvals_,
+                )
                 activations_u = self._combinations @ combi_p
             else:
                 activations_u = self._update_activations(
-                    sq_pdiffs, activations, combi_p=combi_p, dual=self.dual_
+                    sq_pdiffs,
+                    activations,
+                    combi_p=combi_p,
+                    neg_dual_eigvals=-self.dual_eigvals_,
                 )
                 combi_p = combinations_prob(activations)
 
