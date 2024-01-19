@@ -9,10 +9,8 @@ from numpy.typing import NDArray
 from graph_learn.evaluation import relative_error
 from graph_learn.operators import (
     laplacian_squareform_vec,
-    op_activations_norm,
     op_adj_activations,
     op_adj_weights,
-    op_weights_norm,
     prox_gdet_star,
     squared_pdiffs,
 )
@@ -42,6 +40,7 @@ class GraphDictExact(GraphDictBase):
             NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
         """
 
+        n_samples = sq_pdiffs.shape[0]
         # Smoothness
         step = self.weights_ @ sq_pdiffs.T
 
@@ -54,7 +53,7 @@ class GraphDictExact(GraphDictBase):
             )
 
         # L1 regularization
-        step += self.l1_a * self.n_samples_
+        step += self.l1_a * n_samples
 
         if self.log_a > 0:
             # step -= self.log_a / activations.sum(axis=0, keepdims=True)
@@ -70,7 +69,7 @@ class GraphDictExact(GraphDictBase):
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        activations = activations - self.step_a / self.n_samples_ / op_norm * (dual_step + step)
+        activations = activations - self.step_a / n_samples / op_norm * (dual_step + step)
 
         # Projection
         activations[activations < 0] = 0
@@ -99,10 +98,11 @@ class GraphDictExact(GraphDictBase):
         Returns:
             NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
+        n_samples = sq_pdiffs.shape[0]
+
         # Smoothness
         step = self.activations_ @ sq_pdiffs
-
-        step += self.l1_w * self.n_samples_
+        step += self.l1_w * n_samples
 
         if self.ortho_w > 0:
             # grad_step = (
@@ -114,7 +114,7 @@ class GraphDictExact(GraphDictBase):
 
         # ratio = np.abs(dual_step[np.isfinite(step)].mean() / step[np.isfinite(step)].mean())
         # Proximal update
-        weights = weights - self.step_w / self.n_samples_ / op_norm * (dual_step + step)
+        weights = weights - self.step_w / n_samples / op_norm * (dual_step + step)
 
         # Projection
         weights[weights < 0] = 0
@@ -130,7 +130,8 @@ class GraphDictExact(GraphDictBase):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
-        sigma = self.step_dual / self.n_samples_ / op_norm
+        n_samples = activations.shape[0]
+        sigma = self.step_dual / n_samples / op_norm
 
         step = laplacian_squareform_vec(activations.T @ weights)
         return prox_gdet_star(dual + sigma * step, sigma=sigma)
