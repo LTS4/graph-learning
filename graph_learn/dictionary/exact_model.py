@@ -57,7 +57,8 @@ class GraphDictExact(GraphDictBase):
         step += self.l1_a
 
         if self.log_a > 0:
-            step -= self.log_a / activations.sum(axis=0, keepdims=True)
+            # step -= self.log_a / activations.sum(axis=0, keepdims=True)
+            activations[:, activations.sum(0) < 1e-8] = self.log_a
 
         if self.l1_diff_a > 0:
             step -= self.l1_diff_a * (
@@ -131,9 +132,8 @@ class GraphDictExact(GraphDictBase):
 
         sigma = self.step_dual / self.n_samples_ / op_norm
 
-        return prox_gdet_star(
-            dual + sigma * laplacian_squareform_vec(activations.T @ weights), sigma=sigma
-        )
+        step = laplacian_squareform_vec(activations.T @ weights)
+        return prox_gdet_star(dual + sigma * step, sigma=sigma)
 
     def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> (float, float):
         # primal update
@@ -145,9 +145,10 @@ class GraphDictExact(GraphDictBase):
         # dual update
         # x_overshoot = 2 * activations - self.activations_
         # NOTE: I tested overshoot and solutions are either exactly the same, or slightly worse
-        op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
-            activations, self.n_nodes_
-        )
+        # op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
+        #     activations, self.n_nodes_
+        # )
+        op_norm = 1
         self.dual_ = self._update_dual(
             weights=weights,
             activations=activations,
@@ -179,7 +180,8 @@ class GraphDictExact(GraphDictBase):
         for _ in range(self.max_iter):
             activations_u = self._update_activations(sq_pdiffs, activations, dual=dual)
 
-            op_norm = op_act_norm * op_weights_norm(activations_u, self.n_nodes_)
+            # op_norm = op_act_norm * op_weights_norm(activations_u, self.n_nodes_)
+            op_norm = 1
             dual = self._update_dual(self.weights_, activations_u, dual, op_norm=1 / op_norm)
 
             if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
