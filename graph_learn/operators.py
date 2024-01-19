@@ -133,7 +133,7 @@ def prox_gdet_star(
         eigvecs[degenerate_idx] -= np.diag(np.ones(_shape[1] - 1), 1)[np.newaxis, ...]
         eigvecs[degenerate_idx] /= np.sqrt(2)
 
-        eigvecs[degenerate_idx, np.arange(_shape[1]), 0] = np.ones(_shape[1]) / np.sqrt(_shape[1])
+        eigvecs[degenerate_idx, :, 0] = np.ones(_shape[1]) / np.sqrt(_shape[1])
         eigvals[degenerate_idx, 0] = 0
 
     dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
