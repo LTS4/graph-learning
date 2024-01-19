@@ -54,7 +54,7 @@ class GraphDictExact(GraphDictBase):
             )
 
         # L1 regularization
-        step += self.l1_a
+        step += self.l1_a * self.n_samples_
 
         if self.log_a > 0:
             # step -= self.log_a / activations.sum(axis=0, keepdims=True)
@@ -102,7 +102,7 @@ class GraphDictExact(GraphDictBase):
         # Smoothness
         step = self.activations_ @ sq_pdiffs
 
-        step += self.l1_w
+        step += self.l1_w * self.n_samples_
 
         if self.ortho_w > 0:
             # grad_step = (
@@ -173,7 +173,7 @@ class GraphDictExact(GraphDictBase):
         activations = self._init_activations(n_samples)
         dual = np.zeros((n_samples, self.n_nodes_, self.n_nodes_))
 
-        op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
+        # op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
 
         sq_pdiffs = squared_pdiffs(x)
 
