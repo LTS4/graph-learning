@@ -130,8 +130,8 @@ class GraphDictExact(GraphDictBase):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
-        n_samples = activations.shape[0]
-        sigma = self.step_dual / n_samples / op_norm
+        n_atoms, _n_samples = activations.shape
+        sigma = self.step_dual / n_atoms / op_norm
 
         step = laplacian_squareform_vec(activations.T @ weights)
         return prox_gdet_star(dual + sigma * step, sigma=sigma)
