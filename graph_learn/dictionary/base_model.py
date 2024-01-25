@@ -98,7 +98,7 @@ class GraphDictBase(ABC, BaseEstimator):
         self.fit_time_: float
 
     def _init_activations(self, n_samples) -> NDArray[np.float_]:
-        activations = np.ones((self.n_atoms, n_samples))
+        activations = np.ones((self.n_atoms, n_samples // self.window_size))
 
         match self.init_strategy:
             case "uniform":
@@ -128,9 +128,7 @@ class GraphDictBase(ABC, BaseEstimator):
         activations[activations > 1] = 1
 
         if self.window_size > 1:
-            activations = np.repeat(activations[:, :: self.window_size], self.window_size, axis=1)[
-                :, :n_samples
-            ]
+            activations = np.repeat(activations, self.window_size, axis=1)[:, :n_samples]
         return activations
 
     def _init_weigths(self) -> NDArray[np.float_]:
@@ -171,7 +169,7 @@ class GraphDictBase(ABC, BaseEstimator):
         return weights
 
     def _init_dual(self, n_samples: int):
-        return np.zeros((n_samples, self.n_nodes_, self.n_nodes_))
+        return np.zeros((n_samples // self.window_size, self.n_nodes_, self.n_nodes_))
 
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape

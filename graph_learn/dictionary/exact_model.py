@@ -45,12 +45,8 @@ class GraphDictExact(GraphDictBase):
         step = self.weights_ @ sq_pdiffs.T
 
         if self.window_size > 1:
-            step = np.repeat(
-                # average non-overlapping windows
-                step.reshape(self.n_atoms, -1, self.window_size).mean(2),
-                self.window_size,
-                axis=1,
-            )
+            # average non-overlapping windows
+            step = step.reshape(self.n_atoms, -1, self.window_size).mean(2)
 
         # L1 regularization
         step += self.l1_a * n_samples
@@ -140,8 +136,17 @@ class GraphDictExact(GraphDictBase):
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
-        activations = self._update_activations(sq_pdiffs, self.activations_, dual=self.dual_)
-        weights = self._update_weights(sq_pdiffs, self.weights_, dual=self.dual_)
+
+        activations = np.repeat(
+            self._update_activations(
+                sq_pdiffs, self.activations_[:, :: self.window_size], dual=self.dual_
+            ),
+            repeats=self.window_size,
+            axis=1,
+        )
+        weights = self._update_weights(
+            sq_pdiffs, self.weights_, dual=np.repeat(self.dual_, self.window_size, 0)
+        )
 
         # dual update
         # x_overshoot = 2 * activations - self.activations_
@@ -152,7 +157,7 @@ class GraphDictExact(GraphDictBase):
         op_norm = 1
         self.dual_ = self._update_dual(
             weights=weights,
-            activations=activations,
+            activations=activations[:, :: self.window_size],
             dual=self.dual_,
             op_norm=1 / op_norm,
         )
