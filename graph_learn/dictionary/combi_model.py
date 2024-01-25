@@ -31,7 +31,6 @@ class GraphDictionary(GraphDictBase):
         *,
         window_size: int = 1,
         l1_w: float = 0,
-        l2_w: float = 0,
         ortho_w: float = 0,
         smooth_a: float = 1,
         l1_a: float = 0,
@@ -55,7 +54,6 @@ class GraphDictionary(GraphDictBase):
             n_atoms,
             window_size=window_size,
             l1_w=l1_w,
-            l2_w=l2_w,
             ortho_w=ortho_w,
             smooth_a=smooth_a,
             l1_a=l1_a,
@@ -82,6 +80,9 @@ class GraphDictionary(GraphDictBase):
         self.combi_p_: NDArray[np.float_]
         self.dual_eigvals_: NDArray[np.float_]
 
+        if window_size > 1:
+            raise NotImplementedError()
+
     def _init_dual(self, n_samples: int):
         return super()._init_dual(2**self.n_atoms)
 
@@ -107,16 +108,23 @@ class GraphDictionary(GraphDictBase):
         step_size = self.step_a / self.n_samples_
         inst_weights = self._combinations[:, 1:].T @ self.weights_
         step = np.zeros_like(combi_p)
+        combi_sum = combi_p[1:].sum(1, keepdims=True)
 
+        # FIXME: smoothness scale is too big
         # smoothness
         step[1:] = inst_weights @ sq_pdiffs.T  # / inst_weights.sum(1, keepdims=True)
 
         # dual step
         neg_dual_eigvals = neg_dual_eigvals[1:]
         eigmask = neg_dual_eigvals > 1e-8
-        dual_step = eigmask.sum(1, keepdims=True) * np.log(
-            np.where((summed := combi_p[1:].sum(1, keepdims=True)) > 1e-8, summed, 1)
-        ) - np.sum(np.log(np.where(eigmask, neg_dual_eigvals, 1)), axis=1, keepdims=True)
+        # fmt: off
+        dual_step = (
+            eigmask.sum(1, keepdims=True) # rank(dual)
+            * np.log(np.where(combi_sum > 1e-8, combi_sum, 1))
+            - np.sum(np.log(np.where(eigmask, neg_dual_eigvals, 1)), axis=1, keepdims=True)
+        )
+        # dual_step[np.isnan(dual_step)] = 0
+        # fmt: on
         step[1:] -= dual_step
 
         # FIXME: to be valid combinations prob it is not enough to be in the simplex
@@ -187,6 +195,7 @@ class GraphDictionary(GraphDictBase):
         # dual step
         eigmask = neg_dual_eigvals > 1e-8
 
+        # FIXME: I think there is an error in the gradient d/ddelta combi_p
         dual_step = (inter * (2 * self._combinations[:, :, np.newaxis] - 1)).transpose(
             (0, 2, 1)
         ) @ (
@@ -233,20 +242,20 @@ class GraphDictionary(GraphDictBase):
         Returns:
             NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
-        # activations = self.activations_ @ combi_p.T
+        n_samples = sq_pdiffs.shape[0]
 
         # Smoothness
         step = self.activations_ @ sq_pdiffs
         step += self.l1_w
-        step += self.l2_w * self.weights_
 
         if self.ortho_w > 0:
             step += self.ortho_w * (weights.sum(0, keepdims=True) - weights)
 
+        # FIXME: I think there should be some relation to combi_p.sum(1) here
         dual_step = op_adj_weights(self._combinations, dual)
 
         # Proximal update
-        weights = weights - self.step_w / self.n_samples_ / op_norm * (dual_step + step)
+        weights = weights - self.step_w / n_samples / op_norm * (step + dual_step)
 
         # Projection
         weights[weights < 0] = 0
@@ -259,23 +268,28 @@ class GraphDictionary(GraphDictBase):
         dual: NDArray[np.float_],
         op_norm=1,
     ) -> tuple[NDArray, NDArray]:
+        """This is supposed to be the specific method"""
         # pylint: disable=arguments-renamed
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
-        sigma = self.step_dual / op_norm  # / self.n_samples_
+        n_combi, _n_samples = combi_p.shape
+        n_atoms = weights.shape[0]
+        sigma = self.step_dual / op_norm / n_atoms
 
         combi_e = combi_p.sum(1)
-        active = combi_e > 0
-        active[0] = 0  # This ignores the empty component
+        # combi_e = n_combi * np.ones(n_combi)
+        # FIXME: what should I do here? :cry:
+        active = np.ones_like(combi_e, dtype=bool)
+        # active = combi_e > 0
+        # active[0] = 0  # This ignores the empty component
 
-        # FIXME: with a big sigma the laplacian squareform vec completely overrides the dual
-        # variable
+        # FIXME: maybe I should also update inactives
+        step = laplacian_squareform_vec(self._combinations[:, active].T @ weights)
         dual = dual.copy()
         eigvals = np.zeros(dual.shape[:2])
         (dual[active, :, :], eigvals[active, :]) = prox_gdet_star(
-            dual[active, :, :]
-            + sigma * laplacian_squareform_vec(self._combinations[:, active].T @ weights),
+            dual[active, :, :] + sigma * step,
             sigma=sigma * combi_e[active, np.newaxis],
             return_eigvals=True,
         )
@@ -309,16 +323,7 @@ class GraphDictionary(GraphDictBase):
             sq_pdiffs, self.weights_, combi_p=self.combi_p_, dual=self.dual_
         )
 
-        # dual update
-        # op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
-        #     (self._combinations * combi_p.sum(axis=1)[np.newaxis, :])[:, 1:], self.n_nodes_
-        # )
-        # op_norm=1
-        # / op_weights_norm(
-        #     (self._combinations * combi_p.sum(axis=1)[np.newaxis, :])[:, 1:], self.n_nodes_
-        # )
         op_norm = 1
-
         self.dual_, self.dual_eigvals_ = self._update_dual(
             weights=weights,
             combi_p=combi_p,
