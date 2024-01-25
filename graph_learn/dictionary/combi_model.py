@@ -273,26 +273,14 @@ class GraphDictionary(GraphDictBase):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
-        n_combi, _n_samples = combi_p.shape
-        n_atoms = weights.shape[0]
-        sigma = self.step_dual / op_norm / n_atoms
+        n_combi = dual.shape[0]
+        # n_atoms = weights.shape[0]
+        sigma = self.step_dual / op_norm / n_combi
 
-        combi_e = combi_p.sum(1)
-        # combi_e = n_combi * np.ones(n_combi)
-        # FIXME: what should I do here? :cry:
-        active = np.ones_like(combi_e, dtype=bool)
-        # active = combi_e > 0
-        # active[0] = 0  # This ignores the empty component
-
-        # FIXME: maybe I should also update inactives
-        step = laplacian_squareform_vec(self._combinations[:, active].T @ weights)
+        step = laplacian_squareform_vec(self._combinations.T @ weights)
         dual = dual.copy()
         eigvals = np.zeros(dual.shape[:2])
-        (dual[active, :, :], eigvals[active, :]) = prox_gdet_star(
-            dual[active, :, :] + sigma * step,
-            sigma=sigma * combi_e[active, np.newaxis],
-            return_eigvals=True,
-        )
+        dual, eigvals = prox_gdet_star(dual + sigma * step, sigma=sigma, return_eigvals=True)
 
         return dual, eigvals
 
@@ -302,6 +290,8 @@ class GraphDictionary(GraphDictBase):
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
+
+        combi_e = self.combi_p_.sum(1)
 
         if self.combination_update:
             combi_p = self._update_combi_p(
@@ -315,12 +305,15 @@ class GraphDictionary(GraphDictBase):
                 sq_pdiffs,
                 self.activations_,
                 combi_p=self.combi_p_,
-                neg_dual_eigvals=-self.dual_eigvals_,
+                neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
             )
             combi_p = combinations_prob(activations, self._combinations)
 
         weights = self._update_weights(
-            sq_pdiffs, self.weights_, combi_p=self.combi_p_, dual=self.dual_
+            sq_pdiffs,
+            self.weights_,
+            combi_p=self.combi_p_,
+            dual=self.dual_ * combi_e[:, np.newaxis, np.newaxis],
         )
 
         op_norm = 1
