@@ -297,7 +297,7 @@ class GraphDictionary(GraphDictBase):
             combi_p = self._update_combi_p(
                 sq_pdiffs,
                 combi_p=self.combi_p_,
-                neg_dual_eigvals=-self.dual_eigvals_,
+                neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
             )
             activations = self._combinations @ combi_p
         else:
@@ -345,11 +345,13 @@ class GraphDictionary(GraphDictBase):
         combi_p = combinations_prob(activations)
 
         for _ in range(self.max_iter):
+            combi_e = combi_p.sum(1)
+
             if self.combination_update:
                 combi_p = self._update_combi_p(
                     sq_pdiffs,
                     combi_p=combi_p,
-                    neg_dual_eigvals=-self.dual_eigvals_,
+                    neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
                 )
                 activations_u = self._combinations @ combi_p
             else:
@@ -357,7 +359,7 @@ class GraphDictionary(GraphDictBase):
                     sq_pdiffs,
                     activations,
                     combi_p=combi_p,
-                    neg_dual_eigvals=-self.dual_eigvals_,
+                    neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
                 )
                 combi_p = combinations_prob(activations)
 
