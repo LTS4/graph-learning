@@ -101,14 +101,10 @@ class GraphDictExact(GraphDictBase):
         step += self.l1_w * n_samples
 
         if self.ortho_w > 0:
-            # grad_step = (
-            #     np.ones((self.n_atoms, 1)) - np.eye(self.n_atoms)
-            # ) @ self.weights_
             step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
 
         dual_step = op_adj_weights(self.activations_, dual)
 
-        # ratio = np.abs(dual_step[np.isfinite(step)].mean() / step[np.isfinite(step)].mean())
         # Proximal update
         weights = weights - self.step_w / n_samples / op_norm * (dual_step + step)
 
