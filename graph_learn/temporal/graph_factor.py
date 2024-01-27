@@ -135,7 +135,7 @@ class TGFA(BaseEstimator):
         yb1 = self._dual_step1(weights, dual1)
         yb2 = self._dual_step2(weights, dual2)
 
-        p = prox_l1_pos(y - 2 * self.gamma * sq_pdiffs, self.gamma)
+        p = prox_l1_pos(y - 2 * self.gamma * sq_pdiffs - self.degree_reg, self.gamma)
         # FIXME: here I could use the conjugate of prox_neg_log_sum directly
         pb1 = yb1 - self.gamma * prox_neg_log_sum(yb1 / self.gamma, 1 / self.gamma)
         pb2 = yb2 - self.gamma * self._prox_time(yb2 / self.gamma, 1 / self.gamma)
