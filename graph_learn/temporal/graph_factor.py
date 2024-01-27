@@ -70,8 +70,8 @@ class TGFA(BaseEstimator):
 
         self.converged_: int
         self.weights_: NDArray[np.float_]  # shape: (n_windows, n_edges)
-        self.dual1_: NDArray[np.float_]  # shape: (n_windows, n_nodes)
-        self.dual2_: NDArray[np.float_]  # shape: (n_windows, n_edges)
+        self.dual1_: NDArray[np.float_]  # shape: (n_nodes, n_windows)
+        self.dual2_: NDArray[np.float_]  # shape: (n_edges, n_windows)
         self._op_sum: NDArray[np.float_]
         self._op_sum_t: NDArray[np.float_]
         self._op_diff: NDArray[np.float_]
@@ -92,8 +92,8 @@ class TGFA(BaseEstimator):
         ] = -1
 
         self.weights_ = np.zeros((n_windows, n_edges), dtype=float)
-        self.dual1_ = (self._op_sum @ self.weights_.T).T
-        self.dual2_ = np.zeros_like(self.weights_)
+        self.dual1_ = self._op_sum @ self.weights_.T
+        self.dual2_ = np.zeros_like(self.weights_.T)
 
         if self.l1_time > 0 and self.l2_time > 0:
             raise ValueError("Cannot have both l1_time and l2_time > 0")
@@ -106,25 +106,27 @@ class TGFA(BaseEstimator):
 
         x_pad = np.zeros((n_windows * self.window_size, n_nodes))
         x_pad[:n_samples] = x
-        x_pad = x_pad.reshape((n_windows, n_samples, n_nodes))
+        x_pad = x_pad.reshape((n_windows, self.window_size, n_nodes))
 
         return square_to_vec(
             np.sum(
                 (x_pad[:, :, np.newaxis, :] - x_pad[:, :, :, np.newaxis]) ** 2,
                 axis=1,
             )
-        ).flatten()
+        )
 
     def _primal_step(self, primal, dual1, dual2) -> NDArray:
         return primal - self.gamma * (
-            2 * self.sparse_reg * primal + self._op_sum_t @ dual1 + self._op_diff.T @ dual2
+            2 * self.sparse_reg * primal
+            + self._op_sum_t @ dual1
+            + (self._op_diff.T @ dual2.ravel()).reshape(primal.shape)
         )
 
     def _dual_step1(self, primal, dual) -> NDArray:
         return dual + self.gamma * self._op_sum @ primal
 
     def _dual_step2(self, primal, dual) -> NDArray:
-        return dual + self.gamma * self._op_diff @ primal
+        return dual + self.gamma * (self._op_diff @ primal.ravel()).reshape(dual.shape)
 
     def _fit_step(
         self, sq_pdiffs: NDArray, weights: NDArray, dual1: NDArray, dual2: NDArray
@@ -150,16 +152,18 @@ class TGFA(BaseEstimator):
 
     def fit(self, x: NDArray[np.float_]):
         sq_pdiffs = self._initialize(x)
+        sq_pdiffs /= self.window_size
+        # sq_pdiffs /= sq_pdiffs.mean(axis=1, keepdims=True)
 
         for step in range(self.max_iter):
             weights, self.dual1_, self.dual2_ = self._fit_step(
-                sq_pdiffs, self.weights_, self.dual1_, self.dual2_
+                sq_pdiffs.T, self.weights_.T, self.dual1_, self.dual2_
             )
 
-            if relative_error(self.weights_, weights) < self.tol:
+            if relative_error(self.weights_, weights.T) < self.tol:
                 self.converged_ = step
 
-            self.weights_ = weights
+            self.weights_ = weights.T
 
             if self.converged_ > 0:
                 break
