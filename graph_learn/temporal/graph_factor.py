@@ -59,7 +59,7 @@ class TGFA(BaseEstimator):
         sparse_reg: float = 1,
         l1_time: float = 0,
         l2_time: float = 0,
-        max_iter: int = 100,
+        max_iter: int = 1000,
         tol: float = 1e-3,
         random_state=None,
     ) -> None:
@@ -120,7 +120,7 @@ class TGFA(BaseEstimator):
             self._prox_time = prox_group_l2
             self._reg_time = self.l2_time
         else:
-            raise ValueError("Must have either l1_time or l2_time > 0")
+            self._reg_time = 0
 
         x_pad = np.zeros((n_windows * self.window_size, n_nodes))
         x_pad[:n_samples] = x
@@ -156,13 +156,19 @@ class TGFA(BaseEstimator):
 
         # p = prox_l1_pos(y, self.gamma)
         p = relu(y)
-        # NOTE: here I could use the conjugate of prox_neg_log_sum directly
+        # NOTE: here I use the conjugate of prox_neg_log_sum directly
         # pb1 = yb1 - self.gamma * prox_neg_log_sum(yb1 / self.gamma, 1 / self.gamma)
         pb1 = self.degree_reg * prox_neg_log_sum_conj(
             yb1 / self.degree_reg, self.gamma / self.degree_reg
         )
-        # gamma_time = self.gamma / self._reg_time
-        pb2 = yb2 - self.gamma * self._prox_time(yb2.T / self.gamma, self._reg_time / self.gamma).T
+        if self._reg_time > 0:
+            # gamma_time = self.gamma / self._reg_time
+            pb2 = (
+                yb2
+                - self.gamma * self._prox_time(yb2.T / self.gamma, self._reg_time / self.gamma).T
+            )
+        else:
+            pb2 = np.zeros_like(yb2)
 
         q = self._primal_step(p, sq_pdiffs, pb1, pb2)
         qb1 = self._dual_step1(p, pb1)
