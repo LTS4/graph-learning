@@ -10,11 +10,12 @@ from typing import Callable
 import numpy as np
 from numpy.typing import NDArray
 from scipy import sparse
+from scipy.spatial.distance import squareform
 from sklearn.base import BaseEstimator
 
 from graph_learn.evaluation import relative_error
 from graph_learn.operators import square_to_vec
-from graph_learn.smooth_learning import sum_squareform
+from graph_learn.smooth_learning import get_theta, sum_squareform
 
 
 def relu(x: NDArray) -> NDArray:
@@ -53,6 +54,7 @@ class TGFA(BaseEstimator):
         self,
         window_size: int = 1,
         gamma: float = 1,
+        avg_degree: int = None,
         degree_reg: float = 1,
         sparse_reg: float = 1,
         l1_time: float = 0,
@@ -63,6 +65,7 @@ class TGFA(BaseEstimator):
     ) -> None:
         self.window_size = window_size
         self.gamma = gamma  # step size
+        self.avg_degree = avg_degree
         self.degree_reg = degree_reg  # alpha in paper
         self.sparse_reg = sparse_reg  # beta in paper
         self.l1_time = l1_time
@@ -80,6 +83,11 @@ class TGFA(BaseEstimator):
         self._op_diff_t: NDArray[np.float_]
         self._prox_time: Callable[[NDArray[np.float_], float], NDArray[np.float_]]
         self._reg_time: float
+
+    def _validate_params(self):
+        if self.avg_degree is not None:
+            if not np.allclose([self.degree_reg, self.sparse_reg], 1):
+                raise ValueError("Cannot have avg_degree and degree_reg or sparse_reg != 1")
 
     def _initialize(self, x: NDArray[np.float_]) -> NDArray:
         self._validate_params()
@@ -168,6 +176,10 @@ class TGFA(BaseEstimator):
 
     def fit(self, x: NDArray[np.float_]):
         sq_pdiffs = self._initialize(x)
+        if self.avg_degree is not None:
+            sq_pdiffs *= [
+                [get_theta(squareform(sqpd), avg_degree=self.avg_degree)] for sqpd in sq_pdiffs
+            ]
         # sq_pdiffs /= self.window_size
         # sq_pdiffs /= sq_pdiffs.mean(axis=1, keepdims=True)
 
