@@ -29,6 +29,10 @@ def prox_neg_log_sum(x: NDArray, gamma: float) -> NDArray:
     return (x + np.sqrt(x**2 + 4 * gamma)) / 2
 
 
+def prox_neg_log_sum_conj(x: NDArray, gamma: float) -> NDArray:
+    return (x - np.sqrt(x**2 + 4 * gamma)) / 2
+
+
 def prox_l1(x: NDArray, gamma: float) -> NDArray:
     return np.sign(x) * relu(np.abs(x) - gamma)
 
@@ -38,10 +42,8 @@ def prox_group_l2(X: NDArray, gamma: float) -> NDArray:
     if len(X.shape) < 2:
         raise ValueError("X must be at least 2D")
 
-    norm = np.linalg.norm(X, ord=2, axis=-1)
-    norm[norm < gamma] = 1
-
-    return (1 - gamma / norm) * X
+    norm = np.linalg.norm(X, ord=2, axis=-1)[..., np.newaxis]
+    return np.where(norm < gamma, 0, (1 - gamma / norm) * X)
 
 
 class TGFA(BaseEstimator):
@@ -51,8 +53,8 @@ class TGFA(BaseEstimator):
         self,
         window_size: int = 1,
         gamma: float = 1,
-        degree_reg: float = 0,
-        sparse_reg: float = 0,
+        degree_reg: float = 1,
+        sparse_reg: float = 1,
         l1_time: float = 0,
         l2_time: float = 0,
         max_iter: int = 100,
@@ -75,9 +77,13 @@ class TGFA(BaseEstimator):
         self._op_sum: NDArray[np.float_]
         self._op_sum_t: NDArray[np.float_]
         self._op_diff: NDArray[np.float_]
+        self._op_diff_t: NDArray[np.float_]
         self._prox_time: Callable[[NDArray[np.float_], float], NDArray[np.float_]]
+        self._reg_time: float
 
     def _initialize(self, x: NDArray[np.float_]) -> NDArray:
+        self._validate_params()
+
         self.converged_ = -1
         n_samples, n_nodes = x.shape
         n_windows = int(np.ceil(n_samples / self.window_size))
@@ -90,6 +96,8 @@ class TGFA(BaseEstimator):
         self._op_diff[
             np.arange(n_edges, n_edges * n_windows), np.arange(n_edges * (n_windows - 1))
         ] = -1
+        self._op_diff_t = self._op_diff.T.tocsr()
+        self._op_diff = self._op_diff.tocsr()
 
         self.weights_ = np.zeros((n_windows, n_edges), dtype=float)
         self.dual1_ = self._op_sum @ self.weights_.T
@@ -99,8 +107,10 @@ class TGFA(BaseEstimator):
             raise ValueError("Cannot have both l1_time and l2_time > 0")
         elif self.l1_time > 0:
             self._prox_time = prox_l1
+            self._reg_time = self.l1_time
         elif self.l2_time > 0:
             self._prox_time = prox_group_l2
+            self._reg_time = self.l2_time
         else:
             raise ValueError("Must have either l1_time or l2_time > 0")
 
@@ -115,11 +125,12 @@ class TGFA(BaseEstimator):
             )
         )
 
-    def _primal_step(self, primal, dual1, dual2) -> NDArray:
+    def _primal_step(self, primal, sq_pdiffs, dual1, dual2) -> NDArray:
         return primal - self.gamma * (
             2 * self.sparse_reg * primal
+            + 2 * sq_pdiffs
             + self._op_sum_t @ dual1
-            + (self._op_diff.T @ dual2.ravel()).reshape(primal.shape)
+            + (self._op_diff_t @ dual2.ravel()).reshape(primal.shape)
         )
 
     def _dual_step1(self, primal, dual) -> NDArray:
@@ -131,16 +142,21 @@ class TGFA(BaseEstimator):
     def _fit_step(
         self, sq_pdiffs: NDArray, weights: NDArray, dual1: NDArray, dual2: NDArray
     ) -> tuple[NDArray, NDArray, NDArray]:
-        y = self._primal_step(weights, dual1, dual2)
+        y = self._primal_step(weights, sq_pdiffs, dual1, dual2)
         yb1 = self._dual_step1(weights, dual1)
         yb2 = self._dual_step2(weights, dual2)
 
-        p = prox_l1_pos(y - 2 * self.gamma * sq_pdiffs - self.degree_reg, self.gamma)
-        # FIXME: here I could use the conjugate of prox_neg_log_sum directly
-        pb1 = yb1 - self.gamma * prox_neg_log_sum(yb1 / self.gamma, 1 / self.gamma)
-        pb2 = yb2 - self.gamma * self._prox_time(yb2 / self.gamma, 1 / self.gamma)
+        # p = prox_l1_pos(y, self.gamma)
+        p = relu(y)
+        # NOTE: here I could use the conjugate of prox_neg_log_sum directly
+        # pb1 = yb1 - self.gamma * prox_neg_log_sum(yb1 / self.gamma, 1 / self.gamma)
+        pb1 = self.degree_reg * prox_neg_log_sum_conj(
+            yb1 / self.degree_reg, self.gamma / self.degree_reg
+        )
+        # gamma_time = self.gamma / self._reg_time
+        pb2 = yb2 - self.gamma * self._prox_time(yb2.T / self.gamma, self._reg_time / self.gamma).T
 
-        q = self._primal_step(p, pb1, pb2)
+        q = self._primal_step(p, sq_pdiffs, pb1, pb2)
         qb1 = self._dual_step1(p, pb1)
         qb2 = self._dual_step2(p, pb2)
 
@@ -152,7 +168,7 @@ class TGFA(BaseEstimator):
 
     def fit(self, x: NDArray[np.float_]):
         sq_pdiffs = self._initialize(x)
-        sq_pdiffs /= self.window_size
+        # sq_pdiffs /= self.window_size
         # sq_pdiffs /= sq_pdiffs.mean(axis=1, keepdims=True)
 
         for step in range(self.max_iter):
