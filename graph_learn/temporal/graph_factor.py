@@ -135,7 +135,7 @@ class TGFA(BaseEstimator):
 
     def _primal_step(self, primal, sq_pdiffs, dual1, dual2) -> NDArray:
         return primal - self.gamma * (
-            2 * self.sparse_reg * primal
+            2 * self.sparse_reg  # * primal
             + 2 * sq_pdiffs
             + self._op_sum_t @ dual1
             + (self._op_diff_t @ dual2.ravel()).reshape(primal.shape)
@@ -172,7 +172,10 @@ class TGFA(BaseEstimator):
 
         q = self._primal_step(p, sq_pdiffs, pb1, pb2)
         qb1 = self._dual_step1(p, pb1)
-        qb2 = self._dual_step2(p, pb2)
+        if self._reg_time > 0:
+            qb2 = self._dual_step2(p, pb2)
+        else:
+            qb2 = yb2
 
         return (
             weights - y + q,
