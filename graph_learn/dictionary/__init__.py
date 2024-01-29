@@ -2,6 +2,7 @@
 __all__ = [
     "GraphDictionary",
     "GraphDictExact",
+    "GraphDictLog",
     "FixedActivations",
     "FixedWeights",
 ]
@@ -9,3 +10,4 @@ __all__ = [
 from .combi_model import GraphDictionary
 from .exact_model import GraphDictExact
 from .fixed_models import FixedActivations, FixedWeights
+from .log_model import GraphDictLog
