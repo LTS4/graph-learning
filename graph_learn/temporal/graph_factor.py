@@ -99,11 +99,10 @@ class TGFA(BaseEstimator):
 
         self._op_sum, self._op_sum_t = sum_squareform(n_nodes)
 
-        self._op_diff = sparse.eye(n_edges * n_windows, dtype=float, format="lil")
-        self._op_diff[np.arange(n_edges), np.arange(n_edges)] = 0
-        self._op_diff[
-            np.arange(n_edges, n_edges * n_windows), np.arange(n_edges * (n_windows - 1))
-        ] = -1
+        self._op_diff = sparse.eye(n_windows, dtype=float, format="lil") - sparse.eye(
+            n_windows, k=-1, dtype=float, format="lil"
+        )
+        self._op_diff[0, 0] = 0
         self._op_diff_t = self._op_diff.T.tocsr()
         self._op_diff = self._op_diff.tocsr()
 
@@ -138,14 +137,14 @@ class TGFA(BaseEstimator):
             2 * self.sparse_reg  # * primal
             + 2 * sq_pdiffs
             + self._op_sum_t @ dual1
-            + (self._op_diff_t @ dual2.ravel()).reshape(primal.shape)
+            + (self._op_diff_t @ dual2).reshape(primal.shape)
         )
 
     def _dual_step1(self, primal, dual) -> NDArray:
         return dual + self.gamma * self._op_sum @ primal
 
     def _dual_step2(self, primal, dual) -> NDArray:
-        return dual + self.gamma * (self._op_diff @ primal.ravel()).reshape(dual.shape)
+        return dual + self.gamma * (self._op_diff @ primal).reshape(dual.shape)
 
     def _fit_step(
         self, sq_pdiffs: NDArray, weights: NDArray, dual1: NDArray, dual2: NDArray
