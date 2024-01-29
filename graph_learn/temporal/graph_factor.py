@@ -137,14 +137,14 @@ class TGFA(BaseEstimator):
             2 * self.sparse_reg  # * primal
             + 2 * sq_pdiffs
             + self._op_sum_t @ dual1
-            + (self._op_diff_t @ dual2).reshape(primal.shape)
+            + (self._op_diff_t @ dual2.T).T
         )
 
     def _dual_step1(self, primal, dual) -> NDArray:
         return dual + self.gamma * self._op_sum @ primal
 
     def _dual_step2(self, primal, dual) -> NDArray:
-        return dual + self.gamma * (self._op_diff @ primal).reshape(dual.shape)
+        return dual + self.gamma * (self._op_diff @ primal.T).T
 
     def _fit_step(
         self, sq_pdiffs: NDArray, weights: NDArray, dual1: NDArray, dual2: NDArray
