@@ -49,7 +49,7 @@ class GraphDictExact(GraphDictBase):
             step = step.reshape(self.n_atoms, -1, self.window_size).mean(2)
 
         # L1 regularization
-        step += self.l1_a * n_samples
+        step += self.l1_a
 
         if self.log_a > 0:
             # step -= self.log_a / activations.sum(axis=0, keepdims=True)
@@ -98,7 +98,7 @@ class GraphDictExact(GraphDictBase):
 
         # Smoothness
         step = self.activations_ @ sq_pdiffs
-        step += self.l1_w * n_samples
+        step += self.l1_w
 
         if self.ortho_w > 0:
             step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
