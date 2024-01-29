@@ -128,7 +128,7 @@ class GraphDictExact(GraphDictBase):
         step = laplacian_squareform_vec(activations.T @ weights)
         return prox_gdet_star(dual + sigma * step, sigma=sigma)
 
-    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> (float, float):
+    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> tuple[float, float]:
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
