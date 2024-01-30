@@ -5,9 +5,11 @@ from typing import Optional
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.spatial.distance import pdist, squareform
+
+# from scipy.spatial.distance import pdist, squareform
 from sklearn.mixture._base import BaseMixture
 
+from graph_learn.operators import laplacian_squareform_vec, square_to_vec
 from graph_learn.sampling.graphs import sample_uniform_laplacian
 from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
@@ -25,18 +27,30 @@ def _estimate_gauss_laplacian_parameters(
     weights = weights / n_nodes
 
     # Estimate Laplacians
-    for k in range(n_components):
-        y = resp[:, k, np.newaxis] * (x - means[np.newaxis, k])
-        sq_dist = pdist(y.T) ** 2
+    # for k in range(n_components):
+    #     y = resp[:, k, np.newaxis] * (x - means[np.newaxis, k])
+    #     sq_dist = pdist(y.T) ** 2
 
-        # theta = np.mean(sq_dist) / norm_par
-        edge_weights = delta * gsp_learn_graph_log_degrees(
-            sq_dist * get_theta(squareform(sq_dist), avg_degree),
-            alpha=1,
-            beta=1,
-        )
+    #     # theta = np.mean(sq_dist) / norm_par
+    #     edge_weights = delta * gsp_learn_graph_log_degrees(
+    #         sq_dist * get_theta(squareform(sq_dist), avg_degree),
+    #         alpha=1,
+    #         beta=1,
+    #     )
 
-        laplacians[k] = np.diag(np.sum(edge_weights, axis=1)) - edge_weights
+    #     laplacians[k] = np.diag(np.sum(edge_weights, axis=1)) - edge_weights
+
+    y = resp[:, :, np.newaxis] * (x[:, np.newaxis, :] - means[np.newaxis, ...])
+    sq_dist = np.sum((y[..., np.newaxis] - y[..., np.newaxis, :]) ** 2, axis=0)
+
+    # theta = np.mean(sq_dist) / norm_par
+    edge_weights = delta * gsp_learn_graph_log_degrees(
+        square_to_vec(sq_dist) * [[get_theta(sqd, avg_degree)] for sqd in sq_dist],
+        alpha=1,
+        beta=1,
+    )
+
+    laplacians = laplacian_squareform_vec(edge_weights)
 
     return weights, means, laplacians
 
