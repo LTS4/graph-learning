@@ -11,6 +11,7 @@ from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_random_state
 
 from graph_learn.clustering.utils import init_labels
+from graph_learn.operators import laplacian_squareform_vec
 from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
 
@@ -89,19 +90,19 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
         for _i in range(self.max_iter):
             # Compute Laplacians
-            for k in range(self.n_clusters):
-                sq_dist = pdist(x[self.labels_ == k].T) ** 2
-                # theta = np.mean(sq_dist) / self.norm_par
-                # if np.allclose(theta, 0):
-                #     theta = 1
 
-                edge_weights = self.delta * gsp_learn_graph_log_degrees(
-                    sq_dist * get_theta(sq_pdists=squareform(sq_dist), avg_degree=self.avg_degree),
-                    alpha=1,
-                    beta=1,
-                )
+            sq_dist = np.stack([pdist(x[self.labels_ == k].T) ** 2 for k in range(self.n_clusters)])
+            # theta = np.mean(sq_dist) / self.norm_par
+            # if np.allclose(theta, 0):
+            #     theta = 1
 
-                self.laplacians_[k] = np.diag(np.sum(edge_weights, axis=1)) - edge_weights
+            edge_weights = self.delta * gsp_learn_graph_log_degrees(
+                sq_dist * [[get_theta(squareform(sqd), self.avg_degree)] for sqd in sq_dist],
+                alpha=1,
+                beta=1,
+            )
+
+            self.laplacians_ = laplacian_squareform_vec(edge_weights)
 
             # Compute assignments
             # eisum.shape: (n_samples, n_clusters)
