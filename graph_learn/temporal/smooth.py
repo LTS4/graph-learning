@@ -6,6 +6,7 @@ from numpy.typing import NDArray
 from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
+from graph_learn.operators import square_to_vec
 from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
 
@@ -35,31 +36,29 @@ class WindowLogModel(BaseEstimator):
         self.weights_: NDArray[np.float_]
 
     def fit(self, x: NDArray[np.float_]):
-        n_samples, _n_nodes = x.shape
+        n_samples, n_nodes = x.shape
 
-        sq_pdists = np.stack(
-            [
-                squareform(pdist(x[start : start + self.window_size].T) ** 2)
-                for start in range(0, n_samples, self.window_size)
-            ]
+        if (pad_size := n_samples % self.window_size) > 0:
+            x = np.vstack((x, np.zeros((self.window_size - pad_size, n_nodes))))
+
+        sq_pdists = np.sum(
+            (
+                x.reshape(-1, self.window_size, 1, n_nodes)
+                - x.reshape(-1, self.window_size, n_nodes, 1)
+            )
+            ** 2,
+            axis=1,
         )
 
-        self.weights_ = np.stack(
-            [
-                squareform(
-                    gsp_learn_graph_log_degrees(
-                        sqpd * get_theta(sqpd, self.avg_degree),
-                        1,
-                        1,
-                        edge_init=self.edge_init,
-                        maxit=self.maxit,
-                        tol=self.tol,
-                        step_size=self.step_size,
-                        edge_tol=self.edge_tol,
-                    )
-                )
-                for sqpd in sq_pdists
-            ]
+        self.weights_ = gsp_learn_graph_log_degrees(
+            square_to_vec(sq_pdists) * [[get_theta(sqpd, self.avg_degree)] for sqpd in sq_pdists],
+            1,
+            1,
+            edge_init=self.edge_init,
+            maxit=self.maxit,
+            tol=self.tol,
+            step_size=self.step_size,
+            edge_tol=self.edge_tol,
         )
 
         return self
