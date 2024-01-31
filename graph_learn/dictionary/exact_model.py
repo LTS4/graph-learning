@@ -101,7 +101,7 @@ class GraphDictExact(GraphDictBase):
         step += self.l1_w
 
         if self.ortho_w > 0:
-            step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
+            step += self.ortho_w * (weights.sum(0, keepdims=True) - weights)
 
         dual_step = op_adj_weights(self.activations_, dual)
 
