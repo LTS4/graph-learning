@@ -152,7 +152,6 @@ def fixw_from_full(model: GraphDictExact) -> FixedWeights:
         window_size=model.window_size,
         l1_w=model.l1_w,
         ortho_w=model.ortho_w,
-        smooth_a=model.smooth_a,
         l1_a=model.l1_a,
         log_a=model.log_a,
         l1_diff_a=model.l1_diff_a,
