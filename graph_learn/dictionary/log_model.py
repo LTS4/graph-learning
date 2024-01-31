@@ -93,7 +93,6 @@ class GraphDictLog(GraphDictBase):
             )
 
         dual_step = self._op_adj_activations(self.weights_, dual)
-        # ratio = np.abs(dual_step[np.isfinite(step)].mean() / step[np.isfinite(step)].mean())
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
@@ -128,11 +127,11 @@ class GraphDictLog(GraphDictBase):
         n_samples = sq_pdiffs.shape[0]
 
         # Smoothness
-        step = self.activations_ @ sq_pdiffs / sq_pdiffs.mean()
+        step = self.activations_ @ sq_pdiffs
         step += self.l1_w
 
         if self.ortho_w > 0:
-            step += self.ortho_w(weights.sum(0, keepdims=True) - weights)
+            step += self.ortho_w * (weights.sum(0, keepdims=True) - weights)
 
         dual_step = self._op_adj_weights(self.activations_, dual)
 
@@ -199,16 +198,24 @@ class GraphDictLog(GraphDictBase):
             raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
 
         activations = self._init_activations(n_samples)
-        dual = self._init_dual(n_samples)
+        dual = self._init_dual(n_samples // self.window_size)
 
         # op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
 
         sq_pdiffs = squared_pdiffs(x)
 
         for _ in range(self.max_iter):
-            activations_u = self._update_activations(sq_pdiffs, activations, dual=dual)
+            activations_u = np.repeat(
+                self._update_activations(sq_pdiffs, activations[:, :: self.window_size], dual=dual),
+                repeats=self.window_size,
+                axis=1,
+            )
 
-            dual = self._update_dual(self.weights_, activations_u, dual)
+            dual = self._update_dual(
+                self.weights_,
+                2 * activations_u[:, :: self.window_size] - activations[:, :: self.window_size],
+                dual,
+            )
 
             if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
                 return activations_u
