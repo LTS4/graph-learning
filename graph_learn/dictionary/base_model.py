@@ -379,6 +379,12 @@ class GraphDictBase(ABC, BaseEstimator):
         Returns:
             GraphDictBase: self
         """
+        n_samples = x.shape[0]
+        pad_size = n_samples % self.window_size
+        if pad_size > 0:
+            x = np.concatenate(
+                (x, np.zeros((self.window_size - pad_size, x.shape[1]), dtype=float))
+            )
         if self.n_init == 1:
             self._single_fit(x, callback=callback)
 
@@ -413,6 +419,7 @@ class GraphDictBase(ABC, BaseEstimator):
             self.fit_time_ = best["fit_time"]
             self.history_ = best["history"]
 
+        self.activations_ = self.activations_[:, :n_samples]
         return self
 
     @abstractmethod
