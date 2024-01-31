@@ -96,6 +96,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
             # if np.allclose(theta, 0):
             #     theta = 1
 
+            # FIXME: this parameterization ends with collapsing most labels to a single graph
             edge_weights = self.delta * gsp_learn_graph_log_degrees(
                 sq_dist * [[get_theta(squareform(sqd), self.avg_degree)] for sqd in sq_dist],
                 alpha=1,
