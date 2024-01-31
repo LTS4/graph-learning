@@ -51,6 +51,7 @@ class GraphDictBase(ABC, BaseEstimator):
         weight_prior: float | NDArray[np.float_] = None,
         activation_prior: float | NDArray[np.float_] = None,
         verbose: int = 0,
+        early_stop_keyboard: bool = False,
     ) -> None:
         super().__init__()
 
@@ -84,6 +85,7 @@ class GraphDictBase(ABC, BaseEstimator):
         self.activation_prior = activation_prior
 
         self.verbose = verbose
+        self.early_stop_keyboard = early_stop_keyboard
 
         self._sq_pdiffs: NDArray[np.float_]  # shape (n_atoms, n_edges )
 
@@ -308,8 +310,11 @@ class GraphDictBase(ABC, BaseEstimator):
                     break
 
             except KeyboardInterrupt:
-                warn("Keyboard interrupt, stopping early")
-                break
+                if self.early_stop_keyboard:
+                    warn("Keyboard interrupt, stopping early")
+                    break
+                else:
+                    raise
 
         self.fit_time_ = time() - start
 
