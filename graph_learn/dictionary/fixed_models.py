@@ -1,11 +1,9 @@
 """Partially fixed component models"""
 import numpy as np
-from numpy.linalg import eigh
 from numpy.typing import NDArray
 
-from graph_learn.operators import laplacian_squareform_vec
-
 from . import GraphDictExact
+from .utils import powerset_matrix
 
 
 class FixedWeights(GraphDictExact):
@@ -123,8 +121,10 @@ class FixedActivations(GraphDictExact):
     # def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float_]:
     #     return self.combi_p_
 
-    def _update_activations(self, *_args, **_kwargs) -> NDArray:
-        return self.activations_
+    def _update_activations(
+        self, sq_pdiffs: NDArray, activations: NDArray, dual: NDArray, op_norm=1
+    ) -> NDArray:
+        return activations
 
     def predict(self, x) -> NDArray[np.float_]:
         raise NotImplementedError
@@ -169,6 +169,32 @@ def fixw_from_full(model: GraphDictExact) -> FixedWeights:
     )
 
 
-def GraphDictHier(FixedActivations):
-    def _init_activations(self, n_samples) -> NDArray[np.float_]:
-        raise NotImplementedError
+class GraphDictHier(FixedActivations):
+    def __init__(self, depth: int, **kwargs) -> None:
+        super().__init__(
+            n_atoms=2 ** (depth) - 1,
+            **kwargs,
+        )
+        self.depth = depth
+
+    def _initialize(self, x: NDArray) -> None:
+        n_samples, _n_nodes = x.shape
+        n_windows = 2 ** (self.depth - 1)
+        self.window_size = int(np.ceil(n_samples / n_windows))
+
+        # shape (n_atoms, n_samples)
+        self.activation_prior = np.zeros((self.n_atoms, n_windows))
+        atom = 0
+        for d in range(self.depth):
+            n_rep = 2**d
+            win_width = n_windows // n_rep
+            for rep in range(n_rep):
+                start = rep * win_width
+                self.activation_prior[atom, start : start + win_width] = 1
+                atom += 1
+
+        self.activation_prior = np.repeat(self.activation_prior, repeats=self.window_size, axis=1)[
+            :, :n_samples
+        ]
+
+        super()._initialize(x)
