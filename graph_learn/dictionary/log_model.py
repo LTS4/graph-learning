@@ -23,7 +23,7 @@ class GraphDictLog(GraphDictBase):
         self._sum_op_t: sparse.csr_array  # shape: (n_edges, n_nodes)
 
     def _init_dual(self, n_samples: int):
-        return np.zeros((self.n_nodes_, n_samples))
+        return np.zeros((self.n_nodes_, n_samples // self.window_size))
 
     def _initialize(self, x: NDArray) -> None:
         super()._initialize(x)
@@ -171,7 +171,7 @@ class GraphDictLog(GraphDictBase):
             axis=1,
         )
         weights = self._update_weights(
-            sq_pdiffs, self.weights_, dual=np.repeat(self.dual_, self.window_size, 0)
+            sq_pdiffs, self.weights_, dual=np.repeat(self.dual_, self.window_size, 1)
         )
 
         # dual update
@@ -198,7 +198,7 @@ class GraphDictLog(GraphDictBase):
             raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
 
         activations = self._init_activations(n_samples)
-        dual = self._init_dual(n_samples // self.window_size)
+        dual = self._init_dual(n_samples)
 
         # op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
 
@@ -222,4 +222,4 @@ class GraphDictLog(GraphDictBase):
 
             activations = activations_u
 
-        return activations
+        return activations[:, :n_samples]
