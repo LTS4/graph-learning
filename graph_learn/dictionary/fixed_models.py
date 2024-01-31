@@ -3,12 +3,12 @@ import numpy as np
 from numpy.linalg import eigh
 from numpy.typing import NDArray
 
-from graph_learn.operators import laplacian_squareform_vec, op_weights_norm
+from graph_learn.operators import laplacian_squareform_vec
 
-from . import GraphDictionary
+from . import GraphDictExact
 
 
-class FixedWeights(GraphDictionary):
+class FixedWeights(GraphDictExact):
     """Subclass of :class:`GraphDictionary` with fixed weights.
 
     Only Activations are optimized.
@@ -40,13 +40,13 @@ class FixedWeights(GraphDictionary):
 
         return weights
 
-    def _initialize(self, x: NDArray):
-        super()._initialize(x)
+    # def _initialize(self, x: NDArray):
+    #     super()._initialize(x)
 
-        self._combi_lapl = np.einsum(
-            "kc,knm->cnm", self._combinations, laplacian_squareform_vec(self.weights_)
-        )
-        self._eigvals, self._eigvecs = eigh(self._combi_lapl)
+    #     self._combi_lapl = np.einsum(
+    #         "kc,knm->cnm", self._combinations, laplacian_squareform_vec(self.weights_)
+    #     )
+    #     self._eigvals, self._eigvecs = eigh(self._combi_lapl)
 
     def _update_weights(self, *_args, **_kwargs) -> NDArray:
         return self.weights_
@@ -91,7 +91,7 @@ class FixedWeights(GraphDictionary):
         return super().fit(*_args, **_kwargs)
 
 
-class FixedActivations(GraphDictionary):
+class FixedActivations(GraphDictExact):
     """Subclass of :class:`GraphDictionary` with fixed activations.
 
     Only weights are optimized.
@@ -100,7 +100,8 @@ class FixedActivations(GraphDictionary):
     def _init_activations(self, n_samples) -> NDArray[np.float_]:
         expected_shape = (self.n_atoms, n_samples)
 
-        if isinstance(self.activation_prior, np.ndarray):
+        if isinstance(self.activation_prior, (np.ndarray, list)):
+            self.activation_prior = np.array(self.activation_prior, dtype=float)
             if self.activation_prior.shape != expected_shape:
                 raise ValueError(
                     f"Invalid activation prior shape, expected {expected_shape},"
@@ -113,13 +114,14 @@ class FixedActivations(GraphDictionary):
 
         else:
             raise TypeError(
-                f"Activation prior must be real number or a numpy array, got {type(self.activation_prior)}"
+                "Activation prior must be real number or a numpy array"
+                f", got {type(self.activation_prior)}"
             )
 
         return activations
 
-    def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float_]:
-        return self.combi_p_
+    # def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float_]:
+    #     return self.combi_p_
 
     def _update_activations(self, *_args, **_kwargs) -> NDArray:
         return self.activations_
@@ -128,7 +130,7 @@ class FixedActivations(GraphDictionary):
         raise NotImplementedError
 
 
-def fixw_from_full(model: GraphDictionary) -> FixedWeights:
+def fixw_from_full(model: GraphDictExact) -> FixedWeights:
     """Create a :class:`FixedWeights` model from a :class:`GraphDictionary` model.
 
     Parameters
@@ -141,7 +143,7 @@ def fixw_from_full(model: GraphDictionary) -> FixedWeights:
     FixedWeights
         Model with fixed weights.
     """
-    if not isinstance(model, GraphDictionary):
+    if not isinstance(model, GraphDictExact):
         raise TypeError(f"Expected GraphDictionary, got {type(model)}")
 
     return FixedWeights(
@@ -165,3 +167,8 @@ def fixw_from_full(model: GraphDictionary) -> FixedWeights:
         activation_prior=model.activation_prior,
         verbose=model.verbose,
     )
+
+
+def GraphDictHier(FixedActivations):
+    def _init_activations(self, n_samples) -> NDArray[np.float_]:
+        raise NotImplementedError
