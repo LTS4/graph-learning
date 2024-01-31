@@ -34,7 +34,6 @@ class GraphDictBase(ABC, BaseEstimator):
         window_size: int = 1,
         l1_w: float = 0,
         ortho_w: float = 0,
-        smooth_a: float = 1,
         l1_a: float = 0,
         log_a: float = 0,
         l1_diff_a: float = 0,
@@ -59,7 +58,6 @@ class GraphDictBase(ABC, BaseEstimator):
         self.window_size = window_size
         self.ortho_w = ortho_w
         self.l1_w = l1_w
-        self.smooth_a = smooth_a
         self.l1_a = l1_a
         self.log_a = log_a
         self.l1_diff_a = l1_diff_a
