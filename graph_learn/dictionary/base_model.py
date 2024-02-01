@@ -102,10 +102,11 @@ class GraphDictBase(ABC, BaseEstimator):
 
         match self.init_strategy:
             case "uniform":
-                if self.activation_prior is None:
+                if not isinstance(self.activation_prior, (list, np.ndarray)):
                     activations = self.random_state.uniform(size=(self.n_atoms, n_samples))
-                else:
-                    self.activations_ *= self.activation_prior
+
+                if self.activation_prior is not None:
+                    activations *= self.activation_prior
 
             case "discrete":
                 activations = self.random_state.uniform(size=(self.n_atoms, n_samples)) < (
@@ -136,14 +137,12 @@ class GraphDictBase(ABC, BaseEstimator):
 
         match self.init_strategy:
             case "uniform":
-                if self.weight_prior is not None and self.activation_prior is not None:
-                    raise ValueError("Need one free parameter for uniform initialization")
-
-                if self.weight_prior is None:
+                if not isinstance(self.weight_prior, (list, np.ndarray)):
                     weights = self.random_state.uniform(
                         size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
                     )
-                else:
+
+                if self.weight_prior is not None:
                     weights *= self.weight_prior
 
             case "discrete":
