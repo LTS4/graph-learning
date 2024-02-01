@@ -81,15 +81,17 @@ class GraphDictLog(GraphDictBase):
             step = step.reshape(self.n_atoms, -1, self.window_size).mean(2)
 
         # L1 regularization
-        step += self.l1_a
+        step += self.l1_a * self.n_samples_
 
         if self.log_a > 0:
             # step -= self.log_a / activations.sum(axis=0, keepdims=True)
             activations[:, activations.sum(0) < 1e-8] = self.log_a
 
         if self.l1_diff_a > 0:
-            step -= self.l1_diff_a * (
-                np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0)
+            step -= (
+                self.l1_diff_a
+                * self.n_samples_
+                * (np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0))
             )
 
         dual_step = self._op_adj_activations(self.weights_, dual)
@@ -104,7 +106,7 @@ class GraphDictLog(GraphDictBase):
 
         if np.allclose(activations, 0):
             warn("All activations dropped to 0", UserWarning)
-            activations.fill(1)
+            activations.fill(self.log_a)
 
         return activations
 
@@ -128,10 +130,10 @@ class GraphDictLog(GraphDictBase):
 
         # Smoothness
         step = self.activations_ @ sq_pdiffs
-        step += self.l1_w
+        step += self.l1_w * self.n_samples_
 
         if self.ortho_w > 0:
-            step += self.ortho_w * (weights.sum(0, keepdims=True) - weights)
+            step += self.ortho_w * self.n_samples_ * (weights.sum(0, keepdims=True) - weights)
 
         dual_step = self._op_adj_weights(self.activations_, dual)
 
