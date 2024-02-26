@@ -1,4 +1,5 @@
 """Graph components learning original method"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -191,7 +192,6 @@ class GraphDictBase(ABC, BaseEstimator):
         sq_pdiffs: NDArray[np.float_],
         activations: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ) -> NDArray[np.float_]:
         """Update activations
 
@@ -213,7 +213,6 @@ class GraphDictBase(ABC, BaseEstimator):
         sq_pdiffs: NDArray[np.float_],
         weights: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ) -> NDArray[np.float_]:
         """Update the weights of the model
 
@@ -233,7 +232,6 @@ class GraphDictBase(ABC, BaseEstimator):
         weights: NDArray[np.float_],
         activations: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ):
         raise NotImplementedError
 
@@ -247,14 +245,10 @@ class GraphDictBase(ABC, BaseEstimator):
         # dual update
         # x_overshoot = 2 * activations - self.activations_
         # NOTE: I tested overshoot and solutions are either exactly the same, or slightly worse
-        op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
-            activations, self.n_nodes_
-        )
         self.dual_ = self._update_dual(
             weights=weights,
             activations=activations,
             dual=self.dual_,
-            op_norm=1 / op_norm,
         )
 
         a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())

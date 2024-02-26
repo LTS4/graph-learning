@@ -1,4 +1,5 @@
 """Graph components learning original method"""
+
 from __future__ import annotations
 
 from warnings import warn
@@ -153,7 +154,7 @@ class GraphDictLog(GraphDictBase):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
-        sigma = self.step_dual  # / _n_samples / op_norm
+        sigma = self.step_dual  # / _n_samples
 
         step = self._sum_op @ weights.T @ activations
         dual = dual + sigma * step
