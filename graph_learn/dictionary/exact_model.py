@@ -1,4 +1,5 @@
 """Graph components learning original method"""
+
 from __future__ import annotations
 
 from warnings import warn
@@ -26,7 +27,6 @@ class GraphDictExact(GraphDictBase):
         sq_pdiffs: NDArray[np.float_],
         activations: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ) -> NDArray[np.float_]:
         """Update activations
 
@@ -65,7 +65,7 @@ class GraphDictExact(GraphDictBase):
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        activations = activations - self.step_a / n_samples / op_norm * (dual_step + step)
+        activations = activations - self.step_a / n_samples * (dual_step + step)
 
         # Projection
         activations[activations < 0] = 0
@@ -82,7 +82,6 @@ class GraphDictExact(GraphDictBase):
         sq_pdiffs: NDArray[np.float_],
         weights: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ) -> NDArray[np.float_]:
         """Update the weights of the model
 
@@ -106,7 +105,7 @@ class GraphDictExact(GraphDictBase):
         dual_step = op_adj_weights(self.activations_, dual)
 
         # Proximal update
-        weights = weights - self.step_w / n_samples / op_norm * (dual_step + step)
+        weights = weights - self.step_w / n_samples * (dual_step + step)
 
         # Projection
         weights[weights < 0] = 0
@@ -117,13 +116,12 @@ class GraphDictExact(GraphDictBase):
         weights: NDArray[np.float_],
         activations: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
         n_atoms, _n_samples = activations.shape
-        sigma = self.step_dual / n_atoms / op_norm
+        sigma = self.step_dual / n_atoms
 
         step = laplacian_squareform_vec(activations.T @ weights)
         return prox_gdet_star(dual + sigma * step, sigma=sigma)
@@ -150,12 +148,10 @@ class GraphDictExact(GraphDictBase):
         # op_norm = op_activations_norm(laplacian_squareform_vec(weights)) * op_weights_norm(
         #     activations, self.n_nodes_
         # )
-        op_norm = 1
         self.dual_ = self._update_dual(
             weights=weights,
             activations=activations[:, :: self.window_size],
             dual=self.dual_,
-            op_norm=1 / op_norm,
         )
 
         a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
@@ -182,9 +178,7 @@ class GraphDictExact(GraphDictBase):
         for _ in range(self.max_iter):
             activations_u = self._update_activations(sq_pdiffs, activations, dual=dual)
 
-            # op_norm = op_act_norm * op_weights_norm(activations_u, self.n_nodes_)
-            op_norm = 1
-            dual = self._update_dual(self.weights_, activations_u, dual, op_norm=1 / op_norm)
+            dual = self._update_dual(self.weights_, activations_u, dual)
 
             if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
                 return activations_u

@@ -1,4 +1,5 @@
 """Graph components learning original method"""
+
 from __future__ import annotations
 
 from warnings import warn
@@ -140,7 +141,6 @@ class GraphDictionary(GraphDictBase):
         activations: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         neg_dual_eigvals: NDArray[np.float_],
-        op_norm=1,
     ) -> NDArray[np.float_]:
         # pylint: disable=arguments-renamed
         """Update activations
@@ -156,7 +156,7 @@ class GraphDictionary(GraphDictBase):
         Returns:
             NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
         """
-        step_size = self.step_a / self.n_samples_ / op_norm
+        step_size = self.step_a / self.n_samples_
 
         # Smoothness
         step = self.weights_ @ sq_pdiffs.T
@@ -225,7 +225,6 @@ class GraphDictionary(GraphDictBase):
         weights: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ) -> NDArray[np.float_]:
         # pylint: disable=arguments-renamed
         """Update the weights of the model
@@ -253,7 +252,7 @@ class GraphDictionary(GraphDictBase):
         dual_step = op_adj_weights(self._combinations, dual)
 
         # Proximal update
-        weights = weights - self.step_w / n_samples / op_norm * (step + dual_step)
+        weights = weights - self.step_w / n_samples * (step + dual_step)
 
         # Projection
         weights[weights < 0] = 0
@@ -264,7 +263,6 @@ class GraphDictionary(GraphDictBase):
         weights: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         dual: NDArray[np.float_],
-        op_norm=1,
     ) -> tuple[NDArray, NDArray]:
         """This is supposed to be the specific method"""
         # pylint: disable=arguments-renamed
@@ -273,7 +271,7 @@ class GraphDictionary(GraphDictBase):
 
         n_combi = dual.shape[0]
         # n_atoms = weights.shape[0]
-        sigma = self.step_dual / op_norm / n_combi
+        sigma = self.step_dual / n_combi
 
         step = laplacian_squareform_vec(self._combinations.T @ weights)
         dual = dual.copy()
@@ -314,12 +312,10 @@ class GraphDictionary(GraphDictBase):
             dual=self.dual_ * combi_e[:, np.newaxis, np.newaxis],
         )
 
-        op_norm = 1
         self.dual_, self.dual_eigvals_ = self._update_dual(
             weights=weights,
             combi_p=combi_p,
             dual=self.dual_,
-            op_norm=1 / op_norm,
         )
 
         a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
