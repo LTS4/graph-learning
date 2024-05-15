@@ -1,4 +1,5 @@
 """Operators for Laplacians and activations manipulation"""
+
 import numpy as np
 from numpy.linalg import eigh
 from numpy.typing import NDArray
@@ -193,9 +194,16 @@ def op_activations_norm(lapl: NDArray) -> float:
     return svds(lapl.reshape(lapl.shape[0], -1), k=1, return_singular_vectors=False)[0]
 
 
-def squared_pdiffs(x: NDArray):
+def squared_pdiffs(x: NDArray) -> NDArray:
     """Compute scaled nodewise differences, as used in graph ditionary smoothness"""
     return square_to_vec(x[:, :, np.newaxis] - x[:, np.newaxis, :]) ** 2
+
+
+def autocorr(x: NDArray) -> NDArray:
+    """Compute the autocorrelation of a sample matrix of shape (n_samples, n_dim)"""
+    n = x.shape[0]
+    x = x - x.mean(0, keepdims=True)
+    return x.T @ x / (n - 1)
 
 
 def dictionary_smoothness(coeffs: NDArray, weights: NDArray, signals: NDArray):
