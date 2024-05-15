@@ -17,8 +17,10 @@ from graph_learn.evaluation import relative_error
 
 # from graph_learn import OptimizationError
 from graph_learn.operators import (
+    autocorr,
     dictionary_smoothness,
     laplacian_squareform_vec,
+    square_to_vec,
     squared_pdiffs,
 )
 
@@ -47,6 +49,8 @@ class GraphDictBase(ABC, BaseEstimator):
         reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
+        init_strategy_a: str = None,
+        init_strategy_w: str = None,
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
         activation_prior: float | NDArray[np.float_] = None,
@@ -78,7 +82,8 @@ class GraphDictBase(ABC, BaseEstimator):
         else:
             self.random_state = RandomState(random_state)
 
-        self.init_strategy = init_strategy
+        self.init_strategy_a = init_strategy_a or init_strategy
+        self.init_strategy_w = init_strategy_w or init_strategy
         self.n_init = n_init
         self.weight_prior = weight_prior
         self.activation_prior = activation_prior
@@ -101,7 +106,7 @@ class GraphDictBase(ABC, BaseEstimator):
     def _init_activations(self, n_samples) -> NDArray[np.float_]:
         activations = np.ones((self.n_atoms, n_samples // self.window_size))
 
-        match self.init_strategy:
+        match self.init_strategy_a:
             case "uniform":
                 if not isinstance(self.activation_prior, (list, np.ndarray)):
                     activations = self.random_state.uniform(size=(self.n_atoms, n_samples))
@@ -123,8 +128,9 @@ class GraphDictBase(ABC, BaseEstimator):
             case "exact":
                 if self.activation_prior is not None:
                     activations *= self.activation_prior
+
             case _:
-                raise ValueError(f"Invalid init strategy {self.init_strategy}")
+                raise ValueError(f"Invalid init_strategy for activations: {self.init_strategy_a}")
 
         activations[activations < 0] = 0
         activations[activations > 1] = 1
@@ -133,11 +139,11 @@ class GraphDictBase(ABC, BaseEstimator):
             activations = np.repeat(activations, self.window_size, axis=1)[:, :n_samples]
         return activations
 
-    def _init_weigths(self) -> NDArray[np.float_]:
+    def _init_weigths(self, x: NDArray = None) -> NDArray[np.float_]:
         weights = np.ones((self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2))
 
-        match self.init_strategy:
-            case "uniform":
+        match self.init_strategy_w.split("_"):
+            case ["uniform"]:
                 if not isinstance(self.weight_prior, (list, np.ndarray)):
                     weights = self.random_state.uniform(
                         size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
@@ -146,23 +152,45 @@ class GraphDictBase(ABC, BaseEstimator):
                 if self.weight_prior is not None:
                     weights *= self.weight_prior
 
-            case "discrete":
+            case ["discrete"]:
                 weights = self.random_state.uniform(
                     size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
                 ) < (self.weight_prior or 0.5)
                 weights = weights.astype(float)
 
-            case "exp":
+            case ["exp"]:
                 weights = self.random_state.exponential(
                     scale=self.weight_prior or 1, size=weights.shape
                 )
 
-            case "exact":
+            case ["exact"]:
                 if self.weight_prior is not None:
                     weights *= self.weight_prior
 
+            case ["correlation", choice, *other]:
+                match choice:
+                    case "a":
+                        # Stands for Activations
+                        choices = np.argmax(self.activations_, axis=0)
+                    case "d":
+                        # Stands for Discrete
+                        choices = self.random_state.choice(
+                            self.n_atoms, size=self.n_samples_, replace=False
+                        )
+                    case _:
+                        raise ValueError("Invalid choice of correlation for init_strategy")
+
+                weights = np.stack([autocorr(x[choices == i]) for i in range(self.n_atoms)])
+
+                if other == ["pinv"]:
+                    weights = np.linalg.pinv(weights)
+                elif other:
+                    raise ValueError(f"Additional option not recognized: {other}")
+
+                weights = -square_to_vec(weights)
+
             case _:
-                raise ValueError(f"Invalid init strategy {self.init_strategy}")
+                raise ValueError(f"Invalid init_strategy for weights: {self.init_strategy_w}")
 
         weights[weights < 0] = 0
 
@@ -174,8 +202,8 @@ class GraphDictBase(ABC, BaseEstimator):
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
 
-        self.weights_ = self._init_weigths()
         self.activations_ = self._init_activations(self.n_samples_)
+        self.weights_ = self._init_weigths(x)
         self.dual_ = self._init_dual(self.n_samples_)
 
         self.converged_ = -1
