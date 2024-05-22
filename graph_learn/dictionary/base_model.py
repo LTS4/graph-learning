@@ -12,6 +12,7 @@ import pandas as pd
 from numpy.random import RandomState
 from numpy.typing import NDArray
 from sklearn.base import BaseEstimator
+from sklearn.cluster import kmeans_plusplus
 
 from graph_learn.evaluation import relative_error
 
@@ -103,7 +104,8 @@ class GraphDictBase(ABC, BaseEstimator):
         self.history_: pd.DataFrame
         self.fit_time_: float
 
-    def _init_activations(self, n_samples) -> NDArray[np.float_]:
+    def _init_activations(self, x: NDArray) -> NDArray[np.float_]:
+        n_samples = x.shape[0]
         activations = np.ones((self.n_atoms, n_samples // self.window_size))
 
         match self.init_strategy_a:
@@ -128,6 +130,15 @@ class GraphDictBase(ABC, BaseEstimator):
             case "exact":
                 if self.activation_prior is not None:
                     activations *= self.activation_prior
+
+            case "k-means++":
+                centers, _ = kmeans_plusplus(x.T, self.n_atoms, random_state=self.random_state)
+                # shape: (n_atoms, n_samples)
+                # TODO: correlations would make more sense with weight definition
+                dists = np.sum((x[np.newaxis, :, :] - centers[:, :, np.newaxis]) ** 2, axis=2)
+
+                activations.fill(0)
+                activations[np.argmax(dists, axis=0), np.arange(n_samples)] = 1
 
             case _:
                 raise ValueError(f"Invalid init_strategy for activations: {self.init_strategy_a}")
@@ -202,7 +213,7 @@ class GraphDictBase(ABC, BaseEstimator):
     def _initialize(self, x: NDArray) -> None:
         self.n_samples_, self.n_nodes_ = x.shape
 
-        self.activations_ = self._init_activations(self.n_samples_)
+        self.activations_ = self._init_activations(x)
         self.weights_ = self._init_weigths(x)
         self.dual_ = self._init_dual(self.n_samples_)
 
@@ -498,7 +509,7 @@ class GraphDictBase(ABC, BaseEstimator):
         if n_nodes != self.n_nodes_:
             raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
 
-        activations = self._init_activations(n_samples)
+        activations = self._init_activations(x)
         dual = self._init_dual(n_samples)
 
         # op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
