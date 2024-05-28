@@ -131,14 +131,27 @@ class GraphDictBase(ABC, BaseEstimator):
                 if self.activation_prior is not None:
                     activations *= self.activation_prior
 
-            case "k-means++":
-                centers, _ = kmeans_plusplus(x.T, self.n_atoms, random_state=self.random_state)
+            case "k-means++d":
+                # Distance based
+                centers, _ = kmeans_plusplus(x, self.n_atoms, random_state=self.random_state)
                 # shape: (n_atoms, n_samples)
-                # TODO: correlations would make more sense with weight definition
-                dists = np.sum((x[np.newaxis, :, :] - centers[:, :, np.newaxis]) ** 2, axis=2)
+                dists = np.sum((x[np.newaxis, :, :] - centers[:, np.newaxis, :]) ** 2, axis=2)
 
                 activations.fill(0)
-                activations[np.argmax(dists, axis=0), np.arange(n_samples)] = 1
+                activations[np.argmin(dists, axis=0), np.arange(n_samples)] = 1
+
+            case "k-means++c":
+                # Alignement/correlation based
+                centers, _ = kmeans_plusplus(x, self.n_atoms, random_state=self.random_state)
+                # shape: (n_atoms, n_samples)
+                # NOTE: correlations should make more sense with weight definition
+                corr_abs = np.abs(
+                    (x / np.linalg.norm(x, axis=1, keepdims=True))
+                    @ (centers / np.linalg.norm(centers, axis=1, keepdims=True)).T
+                )
+
+                activations.fill(0)
+                activations[np.argmax(corr_abs, axis=1), np.arange(n_samples)] = 1
 
             case _:
                 raise ValueError(f"Invalid init_strategy for activations: {self.init_strategy_a}")
