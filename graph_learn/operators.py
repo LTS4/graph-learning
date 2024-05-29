@@ -94,24 +94,24 @@ def laplacian_squareform_adj_vec(laplacians: NDArray[np.float_]) -> NDArray[np.f
     return square_to_vec(laplacians)
 
 
-def prox_gdet_star(
-    dvar: NDArray[np.float_], sigma: float, return_eigvals: bool = False
-) -> NDArray[np.float_] | tuple[NDArray[np.float_], NDArray[np.float_]]:
-    """Proximal operator of the Moreau's transpose of negative generalized log-determinant
+def prox_gdet_star_spectral_update(
+    sigma: float, eigvals: NDArray, eigvecs: NDArray = None
+) -> NDArray | tuple[NDArray, NDArray]:
+    """
+    Compute the proximal step for updating eigenvalues in the dual operator of pseudo-determinant.
 
     Args:
-        dvar (NDArray[np.float_]): Stack of SPD matrices, of shape (k, n, n)
-        sigma (float): Proximal scale
+        sigma (float): The regularization parameter.
+        eigvals (NDArray): The eigenvalues of the matrix.
+        eigvecs (NDArray, optional): The eigenvectors of the matrix. Defaults to None.
 
     Returns:
-        NDArray[np.float_]: Proximal point
-    """
-    _shape = dvar.shape
-    # I should identify unique Laplacians, to speed-up computations
-    eigvals, eigvecs = eigh(dvar)
-    # _eigvals = eigvals.copy()
+        NDArray or tuple[NDArray, NDArray]: The updated eigenvalues and eigenvectors (if provided).
 
-    # Input shall be SPD, so negative values come from numerical erros
+    """
+    dim = eigvals.shape[1]
+
+    # Input shall be SPD, so negative values come from numerical errors
     # FIXME: I don't think the input is always SPD
     # eigvals[eigvals < 0] = 0
     zeros = np.isclose(eigvals, 0)
@@ -130,12 +130,38 @@ def prox_gdet_star(
         except (TypeError, IndexError):
             eigvals[degenerate_idx, :] = -np.sqrt(sigma)
 
-        # # identify const eigenvector and set its eigval to zero again
-        eigvecs[degenerate_idx] -= np.diag(np.ones(_shape[1] - 1), 1)[np.newaxis, ...]
-        eigvecs[degenerate_idx] /= np.sqrt(2)
-
-        eigvecs[degenerate_idx, :, 0] = np.ones(_shape[1]) / np.sqrt(_shape[1])
         eigvals[degenerate_idx, 0] = 0
+
+        if eigvecs is not None:
+            # # identify const eigenvector and set its eigval to zero again
+            eigvecs[degenerate_idx] -= np.diag(np.ones(dim - 1), 1)[np.newaxis, ...]
+            eigvecs[degenerate_idx] /= np.sqrt(2)
+
+            eigvecs[degenerate_idx, :, 0] = np.ones(dim) / np.sqrt(dim)
+
+            return eigvals, eigvecs
+
+    return eigvals
+
+
+def prox_gdet_star(
+    dvar: NDArray[np.float_], sigma: float, return_eigvals: bool = False
+) -> NDArray[np.float_] | tuple[NDArray[np.float_], NDArray[np.float_]]:
+    """Proximal operator of the Moreau's transpose of negative generalized log-determinant
+
+    Args:
+        dvar (NDArray[np.float_]): Stack of SPD matrices, of shape (k, n, n)
+        sigma (float): Proximal scale
+
+    Returns:
+        NDArray[np.float_]: Proximal point
+    """
+    _shape = dvar.shape
+    # I should identify unique Laplacians, to speed-up computations
+    eigvals, eigvecs = eigh(dvar)
+    # _eigvals = eigvals.copy()
+
+    eigvals, eigvecs = prox_gdet_star_spectral_update(sigma, eigvals, eigvecs)
 
     dvar = np.matmul(eigvecs * eigvals[:, np.newaxis, :], np.transpose(eigvecs, (0, 2, 1)))
     assert dvar.shape == _shape
