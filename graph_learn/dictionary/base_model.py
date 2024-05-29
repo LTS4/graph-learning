@@ -220,7 +220,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         return weights
 
-    def _init_dual(self, x: NDArray):
+    def _init_dual(self, x: NDArray) -> NDArray:
         n_samples, n_nodes = x.shape
         return np.zeros((n_samples // self.window_size, n_nodes, n_nodes))
 
