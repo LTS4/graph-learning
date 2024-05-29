@@ -29,7 +29,7 @@ class GraphDictExact(GraphDictBase):
         weights: NDArray[np.float_],
         activations: NDArray[np.float_],
         dual: NDArray[np.float_],
-    ):
+    ) -> NDArray:
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
