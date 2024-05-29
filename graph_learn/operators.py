@@ -200,7 +200,7 @@ def squared_pdiffs(x: NDArray) -> NDArray:
 
 
 def autocorr(x: NDArray) -> NDArray:
-    """Compute the autocorrelation of a sample matrix of shape (n_samples, n_dim)"""
+    """Compute the autocorrelation (n_dim, n_dim) of a sample matrix of shape (n_samples, n_dim)"""
     n = x.shape[0]
     x = x - x.mean(0, keepdims=True)
     return x.T @ x / (n - 1)
