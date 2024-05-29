@@ -98,7 +98,6 @@ class GraphDictBase(ABC, BaseEstimator):
         self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
         self.dual_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
-        self.n_samples_: int
         self.scale_: float
         self.converged_: int
         self.history_: pd.DataFrame
@@ -164,13 +163,14 @@ class GraphDictBase(ABC, BaseEstimator):
         return activations
 
     def _init_weigths(self, x: NDArray = None) -> NDArray[np.float_]:
-        weights = np.ones((self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2))
+        n_samples, n_nodes = x.shape
+        weights = np.ones((self.n_atoms, (n_nodes**2 - n_nodes) // 2))
 
         match self.init_strategy_w.split("_"):
             case ["uniform"]:
                 if not isinstance(self.weight_prior, (list, np.ndarray)):
                     weights = self.random_state.uniform(
-                        size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                        size=(self.n_atoms, (n_nodes**2 - n_nodes) // 2)
                     )
 
                 if self.weight_prior is not None:
@@ -178,7 +178,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
             case ["discrete"]:
                 weights = self.random_state.uniform(
-                    size=(self.n_atoms, (self.n_nodes_**2 - self.n_nodes_) // 2)
+                    size=(self.n_atoms, (n_nodes**2 - n_nodes) // 2)
                 ) < (self.weight_prior or 0.5)
                 weights = weights.astype(float)
 
@@ -199,7 +199,7 @@ class GraphDictBase(ABC, BaseEstimator):
                     case "d":
                         # Stands for Discrete
                         choices = self.random_state.choice(
-                            self.n_atoms, size=self.n_samples_, replace=False
+                            self.n_atoms, size=n_samples, replace=False
                         )
                     case _:
                         raise ValueError("Invalid choice of correlation for init_strategy")
@@ -220,15 +220,16 @@ class GraphDictBase(ABC, BaseEstimator):
 
         return weights
 
-    def _init_dual(self, n_samples: int):
-        return np.zeros((n_samples // self.window_size, self.n_nodes_, self.n_nodes_))
+    def _init_dual(self, x: NDArray):
+        n_samples, n_nodes = x.shape
+        return np.zeros((n_samples // self.window_size, n_nodes, n_nodes))
 
     def _initialize(self, x: NDArray) -> None:
-        self.n_samples_, self.n_nodes_ = x.shape
+        self.n_nodes_ = x.shape[1]
 
         self.activations_ = self._init_activations(x)
         self.weights_ = self._init_weigths(x)
-        self.dual_ = self._init_dual(self.n_samples_)
+        self.dual_ = self._init_dual(x)
 
         self.converged_ = -1
         self.fit_time_ = -1
@@ -281,7 +282,7 @@ class GraphDictBase(ABC, BaseEstimator):
             step = step.reshape(self.n_atoms, -1, self.window_size).mean(2)
 
         # L1 regularization
-        step += self.l1_a * self.n_samples_
+        step += self.l1_a * n_samples
 
         if self.log_a > 0:
             # step -= self.log_a / activations.sum(axis=0, keepdims=True)
@@ -290,7 +291,7 @@ class GraphDictBase(ABC, BaseEstimator):
         if self.l1_diff_a > 0:
             step -= (
                 self.l1_diff_a
-                * self.n_samples_
+                * n_samples
                 * (np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0))
             )
 
@@ -345,10 +346,10 @@ class GraphDictBase(ABC, BaseEstimator):
 
         # Smoothness
         step = self.activations_ @ sq_pdiffs
-        step += self.l1_w * self.n_samples_
+        step += self.l1_w * n_samples
 
         if self.ortho_w > 0:
-            step += self.ortho_w * self.n_samples_ * (weights.sum(0, keepdims=True) - weights)
+            step += self.ortho_w * n_samples * (weights.sum(0, keepdims=True) - weights)
 
         dual_step = self._op_adj_weights(self.activations_, dual)
 
@@ -523,7 +524,7 @@ class GraphDictBase(ABC, BaseEstimator):
             raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
 
         activations = self._init_activations(x)
-        dual = self._init_dual(n_samples)
+        dual = self._init_dual(x)
 
         # op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
 
