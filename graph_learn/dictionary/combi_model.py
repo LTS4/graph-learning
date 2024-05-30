@@ -82,8 +82,9 @@ class GraphDictionary(GraphDictBase):
         if window_size > 1:
             raise NotImplementedError()
 
-    def _init_dual(self, n_samples: int):
-        return super()._init_dual(2**self.n_atoms)
+    def _init_dual(self, x: NDArray):
+        _n_samples, n_nodes = x.shape
+        return np.zeros((2**self.n_atoms // self.window_size, n_nodes, n_nodes))
 
     def _initialize(self, x: NDArray) -> None:
         super()._initialize(x)
@@ -104,7 +105,9 @@ class GraphDictionary(GraphDictBase):
         # we do not work with the empty component
         # FIXME: now the steps are on a similar scale, but I don't know why, nor if it is correct
 
-        step_size = self.step_a / self.n_samples_
+        n_samples = sq_pdiffs.shape[0]
+        step_size = self.step_a / n_samples
+
         inst_weights = self._combinations[:, 1:].T @ self.weights_
         step = np.zeros_like(combi_p)
         combi_sum = combi_p[1:].sum(1, keepdims=True)
@@ -156,7 +159,8 @@ class GraphDictionary(GraphDictBase):
         Returns:
             NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
         """
-        step_size = self.step_a / self.n_samples_
+        n_samples = sq_pdiffs.shape[0]
+        step_size = self.step_a / n_samples
 
         # Smoothness
         step = self.weights_ @ sq_pdiffs.T
@@ -280,7 +284,7 @@ class GraphDictionary(GraphDictBase):
 
         return dual, eigvals
 
-    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> (float, float):
+    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> tuple[float, float]:
         # combi_p = combinations_prob(self.activations_, self._combinations)
 
         # primal update
