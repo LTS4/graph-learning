@@ -19,8 +19,8 @@ class GraphDictLog(GraphDictBase):
         self._sum_op: sparse.csr_array  # shape: (n_nodes, n_edges)
         self._sum_op_t: sparse.csr_array  # shape: (n_edges, n_nodes)
 
-    def _init_dual(self, n_samples: int):
-        return np.zeros((self.n_nodes_, n_samples // self.window_size))
+    def _init_dual(self, x: NDArray):
+        return np.zeros((self.n_nodes_, x.shape[0] // self.window_size))
 
     def _initialize(self, x: NDArray) -> None:
         super()._initialize(x)
