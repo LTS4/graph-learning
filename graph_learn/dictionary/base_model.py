@@ -98,7 +98,6 @@ class GraphDictBase(ABC, BaseEstimator):
         self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
         self.dual_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
-        self.scale_: float
         self.converged_: int
         self.history_: pd.DataFrame
         self.fit_time_: float
