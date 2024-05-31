@@ -139,9 +139,10 @@ def prox_gdet_star_spectral_update(
 
             eigvecs[degenerate_idx, :, 0] = np.ones(dim) / np.sqrt(dim)
 
-            return eigvals, eigvecs
-
-    return eigvals
+    if eigvecs is None:
+        return eigvals
+    else:
+        return eigvals, eigvecs
 
 
 def prox_gdet_star(
