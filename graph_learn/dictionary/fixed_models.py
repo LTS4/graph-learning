@@ -1,4 +1,5 @@
 """Partially fixed component models"""
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -19,8 +20,9 @@ class FixedWeights(GraphDictExact):
         self._eigvals: NDArray
         self._combi_lapl: NDArray
 
-    def _init_weigths(self) -> NDArray[np.float_]:
-        expected_shape = (self.n_atoms, self.n_nodes_ * (self.n_nodes_ - 1) // 2)
+    def _init_weigths(self, x: NDArray) -> NDArray[np.float_]:
+        n_nodes = x.shape[1]
+        expected_shape = (self.n_atoms, n_nodes * (n_nodes - 1) // 2)
 
         if isinstance(self.weight_prior, np.ndarray):
             if self.weight_prior.shape != expected_shape:
@@ -95,8 +97,8 @@ class FixedActivations(GraphDictExact):
     Only weights are optimized.
     """
 
-    def _init_activations(self, n_samples) -> NDArray[np.float_]:
-        expected_shape = (self.n_atoms, n_samples)
+    def _init_activations(self, x) -> NDArray[np.float_]:
+        expected_shape = (self.n_atoms, x.shape[0])
 
         if isinstance(self.activation_prior, (np.ndarray, list)):
             self.activation_prior = np.array(self.activation_prior, dtype=float)
