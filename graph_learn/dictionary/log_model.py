@@ -20,7 +20,7 @@ class GraphDictLog(GraphDictBase):
         self._sum_op_t: sparse.csr_array  # shape: (n_edges, n_nodes)
 
     def _init_dual(self, x: NDArray):
-        return np.zeros((self.n_nodes_, x.shape[0] // self.window_size))
+        return np.zeros((x.shape[0] // self.window_size, self.n_nodes_))
 
     def _initialize(self, x: NDArray) -> None:
         super()._initialize(x)
@@ -28,10 +28,10 @@ class GraphDictLog(GraphDictBase):
         self._sum_op, self._sum_op_t = sum_squareform(self.n_nodes_)
 
     def _op_adj_activations(self, weights: NDArray, dualv: NDArray) -> NDArray:
-        return weights @ (self._sum_op_t @ dualv)
+        return weights @ (self._sum_op_t @ dualv.T)
 
     def _op_adj_weights(self, activations: NDArray, dualv: NDArray) -> NDArray:
-        return activations @ (self._sum_op_t @ dualv).T
+        return activations @ (self._sum_op_t @ dualv.T).T
 
     def _update_dual(
         self,
@@ -45,6 +45,6 @@ class GraphDictLog(GraphDictBase):
         sigma = self.step_dual  # / _n_samples
 
         step = self._sum_op @ weights.T @ activations
-        dual = dual + sigma * step
+        dual = dual + sigma * step.T
 
         return (dual - np.sqrt(dual**2 + 4 * sigma)) / 2
