@@ -388,7 +388,7 @@ class GraphDictBase(ABC, BaseEstimator):
             axis=1,
         )
         weights = self._update_weights(
-            sq_pdiffs, self.weights_, dual=np.repeat(self.dual_, self.window_size, 1)
+            sq_pdiffs, self.weights_, dual=np.repeat(self.dual_, self.window_size, 0)
         )
 
         # dual update
