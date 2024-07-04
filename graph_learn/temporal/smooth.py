@@ -1,9 +1,9 @@
 """Learning time-varying graph from smooth signals"""
+
 from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial.distance import pdist, squareform
 from sklearn.base import BaseEstimator
 
 from graph_learn.operators import square_to_vec
