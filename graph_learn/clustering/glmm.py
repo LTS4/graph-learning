@@ -5,15 +5,17 @@ from typing import Optional
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.spatial.distance import pdist
+
+# from scipy.spatial.distance import pdist, squareform
 from sklearn.mixture._base import BaseMixture
 
-from graph_learn.clustering.utils import sample_uniform_laplacian
-from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
+from graph_learn.operators import laplacian_squareform_vec, square_to_vec
+from graph_learn.sampling.graphs import sample_uniform_laplacian
+from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
 
 def _estimate_gauss_laplacian_parameters(
-    x: NDArray[np.float64], resp: NDArray[np.float64], norm_par: float, delta: float
+    x: NDArray[np.float64], resp: NDArray[np.float64], avg_degree: float, delta: float
 ):
     _n_samples, n_nodes = x.shape
     _n_samples, n_components = resp.shape
@@ -25,18 +27,17 @@ def _estimate_gauss_laplacian_parameters(
     weights = weights / n_nodes
 
     # Estimate Laplacians
-    for k in range(n_components):
-        y = resp[:, k, np.newaxis] * (x - means[np.newaxis, k])
-        sq_dist = pdist(y.T) ** 2
+    y = resp[:, :, np.newaxis] * (x[:, np.newaxis, :] - means[np.newaxis, ...])
+    sq_dist = np.sum((y[..., np.newaxis] - y[..., np.newaxis, :]) ** 2, axis=0)
 
-        theta = np.mean(sq_dist) / norm_par
-        edge_weights = delta * gsp_learn_graph_log_degrees(
-            sq_dist / theta,
-            alpha=1,
-            beta=1,
-        )
+    # theta = np.mean(sq_dist) / norm_par
+    edge_weights = delta * gsp_learn_graph_log_degrees(
+        square_to_vec(sq_dist) * [[get_theta(sqd, avg_degree)] for sqd in sq_dist],
+        alpha=1,
+        beta=1,
+    )
 
-        laplacians[k] = np.diag(np.sum(edge_weights, axis=1)) - edge_weights
+    laplacians = laplacian_squareform_vec(edge_weights)
 
     return weights, means, laplacians
 
@@ -46,13 +47,13 @@ class GLMM(BaseMixture):
 
     Args:
         n_components (int, optional): Number of components. Defaults to 1.
+        avg_degree (float, optional): Average degree of the graph. Defaults to 0.5.
         tol (float, optional): EM convergence tolerance. Defaults to 1e-3.
         reg_covar (float, optional): Covariance regularization. Defaults to 1e-6.
         max_iter (int, optional): Max EM iterations. Defaults to 100.
         n_init (int, optional): Number of random initializations. Defaults to 1.
         init_params (str, optional): Label initialization method. Defaults to "kmeans".
         regul (float, optional): GLMM regularization. Defaults to 0.15.
-        norm_par (float, optional): Graph learning parameter. Defaults to 1.5.
         delta (float, optional): Graph leraning param. Defaults to 2.
         laplacian_init (Optional[float  |  str], optional): Method for laplacian initialization. Defaults to None.
             Options are:
@@ -79,6 +80,7 @@ class GLMM(BaseMixture):
     def __init__(
         self,
         n_components=1,
+        avg_degree: float = 0.5,
         *,
         tol=1e-3,
         reg_covar=1e-6,
@@ -86,7 +88,7 @@ class GLMM(BaseMixture):
         n_init=1,
         init_params="kmeans",
         regul: float = 0.15,
-        norm_par: float = 1.5,
+        # norm_par: float = 1.5,
         delta: float = 2,
         laplacian_init: Optional[float | str] = None,
         random_state=None,
@@ -108,7 +110,8 @@ class GLMM(BaseMixture):
         )
 
         self.regul = regul
-        self.norm_par = norm_par
+        # self.norm_par = norm_par
+        self.avg_degree = avg_degree
         self.delta = delta
 
         self.laplacian_init = laplacian_init
@@ -118,7 +121,6 @@ class GLMM(BaseMixture):
         self.weights_: NDArray[np.float64]
         self.means_: NDArray[np.float64]
         self.laplacians_: NDArray[np.float64]
-        self.labels_: NDArray[np.int64]
 
     def _check_parameters(self, X):
         pass
@@ -127,7 +129,7 @@ class GLMM(BaseMixture):
         _n_samples, self.n_nodes_ = x.shape
 
         self.weights_, self.means_, laplacians = _estimate_gauss_laplacian_parameters(
-            x, resp, self.norm_par, self.delta
+            x, resp, self.avg_degree, self.delta
         )
 
         if self.laplacian_init is None:
@@ -153,7 +155,7 @@ class GLMM(BaseMixture):
             self.weights_,
             self.means_,
             self.laplacians_,
-        ) = _estimate_gauss_laplacian_parameters(x, np.exp(log_resp), self.norm_par, self.delta)
+        ) = _estimate_gauss_laplacian_parameters(x, np.exp(log_resp), self.avg_degree, self.delta)
         self.weights_ /= self.weights_.sum()
 
     def _estimate_log_prob(self, x: ArrayLike) -> NDArray[np.float64]:

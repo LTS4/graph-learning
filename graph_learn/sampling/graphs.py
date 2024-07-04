@@ -1,21 +1,16 @@
 """Function to sample random graph laplacians"""
 import numpy as np
-from numpy.random import RandomState
+from numpy.random import Generator, default_rng
 from numpy.typing import NDArray
-from scipy.spatial.distance import squareform
+
+from graph_learn.operators import laplacian_squareform
 
 
-def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
-    out = squareform(x)
-    np.fill_diagonal(out, -out.sum(axis=-1))
-    return -out
-
-
-def sample_uniform_laplacian(n_nodes: int, random_state: int | RandomState = None) -> NDArray:
+def sample_uniform_laplacian(n_nodes: int, seed: int | Generator = None) -> NDArray:
     """Create a Laplacian matrix with uniform weights in [0,1]"""
-    random_state = RandomState(random_state)
+    rng = default_rng(seed)
 
-    return laplacian_squareform(random_state.uniform(size=((n_nodes**2 - n_nodes) // 2)))
+    return laplacian_squareform(rng.uniform(size=(n_nodes**2 - n_nodes) // 2))
 
 
 def sample_er_laplacian(
@@ -23,12 +18,12 @@ def sample_er_laplacian(
     edge_p: float,
     edge_w_min: float,
     edge_w_max: float,
-    random_state: int | RandomState = None,
-) -> NDArray[np.float_]:
+    seed: int | Generator = None,
+) -> NDArray[np.float64]:
     """Create an  Laplacian matrix with uniform weights in [0,1]"""
-    random_state = RandomState(random_state)
+    rng = default_rng(seed)
 
-    out = random_state.uniform(size=((n_nodes**2 - n_nodes) // 2))
+    out = rng.uniform(size=(n_nodes**2 - n_nodes) // 2)
     edges = out < edge_p
 
     out[edges] = (out[edges] / edge_p) * (edge_w_max - edge_w_min) + edge_w_min

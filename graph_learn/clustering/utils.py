@@ -7,7 +7,7 @@ from sklearn.cluster import k_means, kmeans_plusplus
 
 
 def init_labels(
-    x: NDArray[np.float_],
+    x: NDArray[np.float64],
     n_clusters: int,
     init_params: str,
     random_state: RandomState,
@@ -15,7 +15,7 @@ def init_labels(
     """Get initial estimate for cluster assignments
 
     Args:
-        x (NDArray[np.float_]): Input data
+        x (NDArray[np.float64]): Input data
         n_clusters (int): Number of clusters
         init_params (str): Keyword for cluster initialization. Options are
             - 'random': returns random stratified assignments

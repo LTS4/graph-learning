@@ -5,13 +5,14 @@ from typing import Optional
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
-from scipy.spatial.distance import pdist
+from scipy.spatial.distance import pdist, squareform
 from scipy.special import softmax
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_random_state
 
 from graph_learn.clustering.utils import init_labels
-from graph_learn.smooth_learning import gsp_learn_graph_log_degrees
+from graph_learn.operators import laplacian_squareform_vec
+from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
 
 class KGraphs(BaseEstimator, ClusterMixin):
@@ -19,16 +20,16 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
     Args:
         n_clusters (int, optional): Number of clusters. Defaults to 1.
+        avg_degree (float, optional): Average degree of the graph. Defaults to 0.5.
         max_iter (int, optional): Maximum EM steps. Defaults to 100.
         n_init (int, optional): Number of separate initalization. Defaults to 1.
         init_params (str, optional): Label initialization method. Defaults to "kmeans".
-        norm_par (float, optional): Graph learning parameter. Defaults to 1.5.
         delta (float, optional): _description_. Defaults to 2.
         random_state (Optional[RandomState], optional): _description_. Defaults to None.
 
     Parameters:
         labels_ (NDArray[np.int_]): Cluster assignments
-        laplacians_ (NDArray[np.float_]): Cluster laplacians
+        laplacians_ (NDArray[np.float64]): Cluster laplacians
         converged_ (bool): Wheter assignment converged
         score_ (float): Total smoothness
 
@@ -41,12 +42,13 @@ class KGraphs(BaseEstimator, ClusterMixin):
     def __init__(
         self,
         n_clusters=1,
+        avg_degree: float = 0.5,
         *,
         max_iter=100,
         n_init=1,
         init_params="kmeans",
-        norm_par: float = 1.5,
-        delta: float = 2,
+        # norm_par: float = 1.5,
+        delta: float = 1,
         random_state: Optional[RandomState] = None,
     ) -> None:
         self.n_clusters = n_clusters
@@ -54,16 +56,17 @@ class KGraphs(BaseEstimator, ClusterMixin):
         self.max_iter = max_iter
         self.n_init = n_init
         self.init_params = init_params
-        self.norm_par = norm_par
+        # self.norm_par = norm_par
         self.delta = delta
+        self.avg_degree = avg_degree
         self.random_state = random_state
 
         self.labels_: NDArray[np.int_]
-        self.laplacians_: NDArray[np.float_]
+        self.laplacians_: NDArray[np.float64]
         self.converged_: bool
         self.score_: float
 
-    def _init_parameters(self, x: NDArray[np.float_]):
+    def _init_parameters(self, x: NDArray[np.float64]):
         _n_samples, n_nodes = x.shape
 
         self.random_state = check_random_state(self.random_state)
@@ -79,26 +82,28 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
         self.score_ = np.inf
 
-    def _smoothness(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _smoothness(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         return np.einsum("ni,kij,nj->nk", x, self.laplacians_, x)
 
-    def _single_fit(self, x: NDArray[np.float_], _y=None) -> None:
+    def _single_fit(self, x: NDArray[np.float64], _y=None) -> None:
         self._init_parameters(x)
 
         for _i in range(self.max_iter):
             # Compute Laplacians
-            for k in range(self.n_clusters):
 
-                sq_dist = pdist(x[self.labels_ == k].T) ** 2
-                theta = np.mean(sq_dist) / self.norm_par
-                if np.allclose(theta, 0):
-                    theta = 1
+            sq_dist = np.stack([pdist(x[self.labels_ == k].T) ** 2 for k in range(self.n_clusters)])
+            # theta = np.mean(sq_dist) / self.norm_par
+            # if np.allclose(theta, 0):
+            #     theta = 1
 
-                edge_weights = self.delta * gsp_learn_graph_log_degrees(
-                    sq_dist / theta, alpha=1, beta=1
-                )
+            # FIXME: this parameterization ends with collapsing most labels to a single graph
+            edge_weights = self.delta * gsp_learn_graph_log_degrees(
+                sq_dist * [[get_theta(squareform(sqd), self.avg_degree)] for sqd in sq_dist],
+                alpha=1,
+                beta=1,
+            )
 
-                self.laplacians_[k] = np.diag(np.sum(edge_weights, axis=1)) - edge_weights
+            self.laplacians_ = laplacian_squareform_vec(edge_weights)
 
             # Compute assignments
             # eisum.shape: (n_samples, n_clusters)
@@ -113,7 +118,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
             self.labels_ = labels
 
-    def fit_predict(self, x: NDArray[np.float_], _y=None) -> NDArray[np.int_]:
+    def fit_predict(self, x: NDArray[np.float64], _y=None) -> NDArray[np.int_]:
         n_samples, n_nodes = x.shape
 
         best_score = np.inf
@@ -137,14 +142,14 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
         return self.labels_
 
-    def fit(self, x: NDArray[np.float_], _y=None):
+    def fit(self, x: NDArray[np.float64], _y=None):
         self.fit_predict(x)
         return self
 
-    def predict(self, x: NDArray[np.float_]) -> NDArray[np.int_]:
+    def predict(self, x: NDArray[np.float64]) -> NDArray[np.int_]:
         """Compute labels"""
         return np.argmin(self._smoothness(x), axis=1)
 
-    def predict_proba(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         "Return softmax of smoothness"
         return softmax(-self._smoothness(x), axis=1)
