@@ -29,7 +29,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
     Parameters:
         labels_ (NDArray[np.int_]): Cluster assignments
-        laplacians_ (NDArray[np.float_]): Cluster laplacians
+        laplacians_ (NDArray[np.float64]): Cluster laplacians
         converged_ (bool): Wheter assignment converged
         score_ (float): Total smoothness
 
@@ -62,11 +62,11 @@ class KGraphs(BaseEstimator, ClusterMixin):
         self.random_state = random_state
 
         self.labels_: NDArray[np.int_]
-        self.laplacians_: NDArray[np.float_]
+        self.laplacians_: NDArray[np.float64]
         self.converged_: bool
         self.score_: float
 
-    def _init_parameters(self, x: NDArray[np.float_]):
+    def _init_parameters(self, x: NDArray[np.float64]):
         _n_samples, n_nodes = x.shape
 
         self.random_state = check_random_state(self.random_state)
@@ -82,10 +82,10 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
         self.score_ = np.inf
 
-    def _smoothness(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _smoothness(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         return np.einsum("ni,kij,nj->nk", x, self.laplacians_, x)
 
-    def _single_fit(self, x: NDArray[np.float_], _y=None) -> None:
+    def _single_fit(self, x: NDArray[np.float64], _y=None) -> None:
         self._init_parameters(x)
 
         for _i in range(self.max_iter):
@@ -118,7 +118,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
             self.labels_ = labels
 
-    def fit_predict(self, x: NDArray[np.float_], _y=None) -> NDArray[np.int_]:
+    def fit_predict(self, x: NDArray[np.float64], _y=None) -> NDArray[np.int_]:
         n_samples, n_nodes = x.shape
 
         best_score = np.inf
@@ -142,14 +142,14 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
         return self.labels_
 
-    def fit(self, x: NDArray[np.float_], _y=None):
+    def fit(self, x: NDArray[np.float64], _y=None):
         self.fit_predict(x)
         return self
 
-    def predict(self, x: NDArray[np.float_]) -> NDArray[np.int_]:
+    def predict(self, x: NDArray[np.float64]) -> NDArray[np.int_]:
         """Compute labels"""
         return np.argmin(self._smoothness(x), axis=1)
 
-    def predict_proba(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         "Return softmax of smoothness"
         return softmax(-self._smoothness(x), axis=1)

@@ -18,7 +18,7 @@ class WindowLogModel(BaseEstimator):
         window_size: int = 10,
         *,
         avg_degree: float = None,
-        edge_init: Optional[NDArray[np.float_]] = None,
+        edge_init: Optional[NDArray[np.float64]] = None,
         maxit: int = 1000,
         tol: float = 1e-5,
         step_size: float = 0.5,
@@ -33,9 +33,9 @@ class WindowLogModel(BaseEstimator):
         self.step_size = step_size
         self.edge_tol = edge_tol
 
-        self.weights_: NDArray[np.float_]
+        self.weights_: NDArray[np.float64]
 
-    def fit(self, x: NDArray[np.float_]):
+    def fit(self, x: NDArray[np.float64]):
         n_samples, n_nodes = x.shape
 
         if (pad_size := n_samples % self.window_size) > 0:

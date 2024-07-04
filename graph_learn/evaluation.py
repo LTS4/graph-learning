@@ -5,15 +5,15 @@ from scipy.spatial.distance import squareform
 from sklearn.metrics import f1_score, precision_score, recall_score
 
 
-def relative_error(y_true: NDArray[np.float_], y_pred: NDArray[np.float_]) -> float:
+def relative_error(y_true: NDArray[np.float64], y_pred: NDArray[np.float64]) -> float:
     r"""Relative error between matrices or vectors
     .. :math:
         \operatorname{RE}(\hat{\mathbf y}, \bm y^*)
             = {\norm{\hat{\mathbf y} - \bm y^*}_F} / \norm{\bm y^*}_F
 
     Args:
-        y_true (NDArray[np.float_]): Target matrix/vector
-        y_pred (NDArray[np.float_]): Predicted matrix/vector
+        y_true (NDArray[np.float64]): Target matrix/vector
+        y_pred (NDArray[np.float64]): Predicted matrix/vector
 
     Returns:
         float: Error

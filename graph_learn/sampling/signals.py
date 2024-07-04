@@ -5,17 +5,17 @@ from numpy.typing import NDArray
 
 
 def sample_lgmrf(
-    laplacian: NDArray[np.float_], n_samples: int, seed: int | Generator = None
-) -> NDArray[np.float_]:
+    laplacian: NDArray[np.float64], n_samples: int, seed: int | Generator = None
+) -> NDArray[np.float64]:
     """Sample signals from a Laplacian-constrained Gaussian Markov random field.
 
     Args:
-        laplacian (NDArray[np.float_]): Graph Laplacian
+        laplacian (NDArray[np.float64]): Graph Laplacian
         n_samples (int): Number of samples
         random_state (int | Generator, optional): Random number genrator or seed. Defaults to None.
 
     Returns:
-        NDArray[np.float_]: Sample matrix of shape (n_samples, n_nodes)
+        NDArray[np.float64]: Sample matrix of shape (n_samples, n_nodes)
     """
     rng = default_rng(seed)
 

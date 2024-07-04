@@ -184,7 +184,7 @@ def gsp_learn_graph_log_degrees(
         return edge_w.T
 
 
-def get_theta(sq_pdists: NDArray[np.float_], avg_degree: int) -> float:
+def get_theta(sq_pdists: NDArray[np.float64], avg_degree: int) -> float:
     """Compute a theta parameter to obtain desired average degree from  graph learning LogModel.
 
     The parametrization is from V. Kalofolias and N. Perraudin, “Large Scale
@@ -219,7 +219,7 @@ class LogModel(BaseEstimator):
 
     Parameters:
         avg_degree (float, optional): Desired average degree. Defaults to None.
-        edge_init (Optional[NDArray[np.float_]], optional): Prior on graph
+        edge_init (Optional[NDArray[np.float64]], optional): Prior on graph
             weights. Defaults to None.
         maxit (int, optional): Max optimizaiton iterations. Defaults to 1000.
         tol (float, optional): Optimization tolerance. Defaults to 1e-5.
@@ -228,13 +228,13 @@ class LogModel(BaseEstimator):
 
     Attributes:
         theta_ (float): Sparsity parameter to rescale pairwise distances.
-        weights_ (NDArray[np.float_]): Edge weights of the learned graph.
+        weights_ (NDArray[np.float64]): Edge weights of the learned graph.
     """
 
     def __init__(
         self,
         avg_degree: float = None,
-        edge_init: Optional[NDArray[np.float_]] = None,
+        edge_init: Optional[NDArray[np.float64]] = None,
         maxit: int = 1000,
         tol: float = 1e-5,
         step_size: float = 0.5,
@@ -248,7 +248,7 @@ class LogModel(BaseEstimator):
         self.edge_tol = edge_tol
 
         self.theta_: float
-        self.weights_: NDArray[np.float_]
+        self.weights_: NDArray[np.float64]
 
     def _initialize(self, sq_pdists):
         if self.avg_degree is None:
@@ -256,7 +256,7 @@ class LogModel(BaseEstimator):
         else:
             self.theta_ = get_theta(sq_pdists, self.avg_degree)
 
-    def fit(self, x: NDArray[np.float_]):
+    def fit(self, x: NDArray[np.float64]):
         sq_pdists = squareform(pdist(x.T) ** 2)
         self._initialize(sq_pdists)
 

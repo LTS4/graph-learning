@@ -74,14 +74,14 @@ class TGFA(BaseEstimator):
         self.tol = tol
 
         self.converged_: int
-        self.weights_: NDArray[np.float_]  # shape: (n_windows, n_edges)
-        self.dual1_: NDArray[np.float_]  # shape: (n_nodes, n_windows)
-        self.dual2_: NDArray[np.float_]  # shape: (n_edges, n_windows)
-        self._op_sum: NDArray[np.float_]
-        self._op_sum_t: NDArray[np.float_]
-        self._op_diff: NDArray[np.float_]
-        self._op_diff_t: NDArray[np.float_]
-        self._prox_time: Callable[[NDArray[np.float_], float], NDArray[np.float_]]
+        self.weights_: NDArray[np.float64]  # shape: (n_windows, n_edges)
+        self.dual1_: NDArray[np.float64]  # shape: (n_nodes, n_windows)
+        self.dual2_: NDArray[np.float64]  # shape: (n_edges, n_windows)
+        self._op_sum: NDArray[np.float64]
+        self._op_sum_t: NDArray[np.float64]
+        self._op_diff: NDArray[np.float64]
+        self._op_diff_t: NDArray[np.float64]
+        self._prox_time: Callable[[NDArray[np.float64], float], NDArray[np.float64]]
         self._reg_time: float
 
     def _validate_params(self):
@@ -89,7 +89,7 @@ class TGFA(BaseEstimator):
             if not np.allclose([self.degree_reg, self.sparse_reg], 1):
                 raise ValueError("Cannot have avg_degree and degree_reg or sparse_reg != 1")
 
-    def _initialize(self, x: NDArray[np.float_]) -> NDArray:
+    def _initialize(self, x: NDArray[np.float64]) -> NDArray:
         self._validate_params()
 
         self.converged_ = -1
@@ -182,7 +182,7 @@ class TGFA(BaseEstimator):
             dual2 - yb2 + qb2,
         )
 
-    def fit(self, x: NDArray[np.float_]):
+    def fit(self, x: NDArray[np.float64]):
         sq_pdiffs = self._initialize(x)
         if self.avg_degree is not None:
             sq_pdiffs *= [

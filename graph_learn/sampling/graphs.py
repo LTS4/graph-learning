@@ -19,7 +19,7 @@ def sample_er_laplacian(
     edge_w_min: float,
     edge_w_max: float,
     seed: int | Generator = None,
-) -> NDArray[np.float_]:
+) -> NDArray[np.float64]:
     """Create an  Laplacian matrix with uniform weights in [0,1]"""
     rng = default_rng(seed)
 

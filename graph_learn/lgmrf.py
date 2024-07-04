@@ -17,12 +17,12 @@ _LAPLACIAN_SET = [
 
 
 def nonnegative_qp_solver(
-    mat: NDArray[np.float_],
-    vec: NDArray[np.float_],
+    mat: NDArray[np.float64],
+    vec: NDArray[np.float64],
     step: float = 0.1,
     tol: float = 1e-6,
     max_iter=100,
-) -> NDArray[np.float_]:
+) -> NDArray[np.float64]:
     r"""Find non-negative solution of the following quadratic form
     .. :math:
         \frac{1}{2}\beta^\top Q \beta - \beta^\top p, \quad \beta \geq 0
@@ -31,12 +31,12 @@ def nonnegative_qp_solver(
     solve with ADMM.
 
     Args:
-        mat (NDArray[np.float_]): Symmetric matrix
-        vec (NDArray[np.float_]): Offset
+        mat (NDArray[np.float64]): Symmetric matrix
+        vec (NDArray[np.float64]): Offset
         tol (float): Convergence tolerance
 
     Returns:
-        NDArray[np.float_]: Solution of quadratic problem
+        NDArray[np.float64]: Solution of quadratic problem
     """
     n = mat.shape[0]
 
@@ -127,11 +127,11 @@ class LGMRF(BaseEstimator):
         self.adj_mask = adj_mask
 
         self.n_nodes_: int
-        self.laplacian_: NDArray[np.float_]
-        self.inv_laplacian_: NDArray[np.float_]
+        self.laplacian_: NDArray[np.float64]
+        self.inv_laplacian_: NDArray[np.float64]
         self.converged_: int
 
-        self._h_alpha: NDArray[np.float_]
+        self._h_alpha: NDArray[np.float64]
 
     def _check_parameters(self, x):
         if self.laplacian_set not in _LAPLACIAN_SET:
@@ -166,7 +166,7 @@ class LGMRF(BaseEstimator):
 
         return x
 
-    def _ggl_fit(self, x: NDArray[np.float_]):
+    def _ggl_fit(self, x: NDArray[np.float64]):
         indices = np.arange(self.n_nodes_)
 
         for cycle in range(self.max_cycle):
@@ -225,7 +225,7 @@ class LGMRF(BaseEstimator):
 
         return self
 
-    def fit(self, x: NDArray[np.float_], _y=None):
+    def fit(self, x: NDArray[np.float64], _y=None):
         x = x / np.mean(x) * self.norm_par
         x = self._initialize(x)
 

@@ -8,14 +8,14 @@ from scipy.spatial.distance import squareform
 
 
 def relaxed_update(
-    *pairs: list[tuple[NDArray[np.float_], NDArray[np.float_]]],
+    *pairs: list[tuple[NDArray[np.float64], NDArray[np.float64]]],
     relaxation: float,
 ) -> tuple[list[NDArray], NDArray]:
     """Compute relaxed update for each `(var, var1)` in `pairs`:
     `new_var = relaxation * var1 + (1 - relaxation) * var`
 
     Args:
-        pairs (list[tuple[NDArray[np.float_], NDArray[np.float_]]]): Pairs of variables
+        pairs (list[tuple[NDArray[np.float64], NDArray[np.float64]]]): Pairs of variables
         relaxation (float): Parameter in (0,2).
 
     Returns:
@@ -36,26 +36,26 @@ def relaxed_update(
     return out, rel_norms
 
 
-def square_to_vec(x: NDArray[np.float_]) -> NDArray[np.float_]:
+def square_to_vec(x: NDArray[np.float64]) -> NDArray[np.float64]:
     triu = np.triu_indices(x.shape[-1], k=1)
     return x[:, triu[0], triu[1]]
 
 
-def laplacian_squareform(x: NDArray[np.float_]) -> NDArray[np.float_]:
+def laplacian_squareform(x: NDArray[np.float64]) -> NDArray[np.float64]:
     """Get Laplacians from vectorized edge weights
 
     Args:
         x (NDArray[np.float]): Array of vectorized edge weights of shape (n_edges,)
 
     Returns:
-        NDArray[np.float_]: Laplacian array of shape (n_nodes, n_nodes)
+        NDArray[np.float64]: Laplacian array of shape (n_nodes, n_nodes)
     """
     lapl = -squareform(x)
     np.fill_diagonal(lapl, -lapl.sum(axis=-1))
     return lapl
 
 
-def laplacian_squareform_vec(x: NDArray[np.float_]) -> NDArray[np.float_]:
+def laplacian_squareform_vec(x: NDArray[np.float64]) -> NDArray[np.float64]:
     """Tensor form of laplacian squareform"""
     n_nodes = int(np.sqrt(2 * x.shape[-1] + 0.25) + 0.5)
     triu = np.triu_indices(n_nodes, k=1)
@@ -70,7 +70,7 @@ def laplacian_squareform_vec(x: NDArray[np.float_]) -> NDArray[np.float_]:
     return laplacians
 
 
-def laplacian_squareform_adj(laplacian: NDArray[np.float_]) -> NDArray[np.float_]:
+def laplacian_squareform_adj(laplacian: NDArray[np.float64]) -> NDArray[np.float64]:
     """Adjoint of laplacian squareform"""
     # out = -2 * laplacian
     # neg_degs = np.sum(laplacian - np.diag(np.diag(laplacian)), axis=0)
@@ -82,7 +82,7 @@ def laplacian_squareform_adj(laplacian: NDArray[np.float_]) -> NDArray[np.float_
     )
 
 
-def laplacian_squareform_adj_vec(laplacians: NDArray[np.float_]) -> NDArray[np.float_]:
+def laplacian_squareform_adj_vec(laplacians: NDArray[np.float64]) -> NDArray[np.float64]:
     """Tensor form of adjoint of laplacian squareform"""
     diags = np.diagonal(laplacians, axis1=-2, axis2=-1)
     laplacians = (
@@ -146,16 +146,16 @@ def prox_gdet_star_spectral_update(
 
 
 def prox_gdet_star(
-    dvar: NDArray[np.float_], sigma: float, return_eigvals: bool = False
-) -> NDArray[np.float_] | tuple[NDArray[np.float_], NDArray[np.float_]]:
+    dvar: NDArray[np.float64], sigma: float, return_eigvals: bool = False
+) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Proximal operator of the Moreau's transpose of negative generalized log-determinant
 
     Args:
-        dvar (NDArray[np.float_]): Stack of SPD matrices, of shape (k, n, n)
+        dvar (NDArray[np.float64]): Stack of SPD matrices, of shape (k, n, n)
         sigma (float): Proximal scale
 
     Returns:
-        NDArray[np.float_]: Proximal point
+        NDArray[np.float64]: Proximal point
     """
     _shape = dvar.shape
     # I should identify unique Laplacians, to speed-up computations
