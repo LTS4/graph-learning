@@ -1,11 +1,11 @@
 """Tests for bilinear operators and adjoints"""
+
 from itertools import product
 
 import numpy as np
 import pytest
 from numpy.random import default_rng
 
-from graph_learn.dictionary.utils import combinations_prob, powerset_matrix
 from graph_learn.operators import (
     dictionary_smoothness,
     laplacian_squareform,
