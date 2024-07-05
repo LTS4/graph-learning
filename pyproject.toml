@@ -1,48 +1,98 @@
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta:__legacy__"
 
-[tool.pylint.master]
-docstring-min-length = 5
+requires = [
+    "setuptools >= 61.0",
+    "wheel",
+    "setuptools-git-versioning",
+]
+build-backend = "setuptools.build_meta"
 
-[tool.pylint.format]
-max-line-length = 100
+[project]
 
-[tool.pylint.basic]
-good-names = ['f', 'N', 'n', 'i', 'j', 'k', 'df', 'ax', 'ex', 'lr', 'Run', '_']
-good-names-rgxs = ['x(\d*|_[\w\d]*)', 'X(\d*|_[\w\d]*)', 'y(\d*|_[\w\d]*)']
-no-docstring-rgx = '^_|^fit$'
+name = "graph_learn"
+dynamic = ["version"]
+authors = [
+    { name = "William Cappelletti", email = "william.cappelletti@epfl.ch" },
+]
+description = "Extracting graphs from signals on nodes"
+keywords = [
+    "machine learning",
+    "graph",
+    "network",
+    "signal processing",
+    "clustering",
+    "time series",
+]
+readme = "README.md"
+license = { text = "BSD-3-Clause" }
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.2.1",
+    "scikit-learn",
+    "tqdm",
+]
+optional-dependencies = { dev = ["pylint", "pytest", "black", "isort"] }
 
-
-[tool.pylint.typecheck]
-# List of members which are set dynamically and missed by Pylint inference
-# system, and so shouldn't trigger E1101 when accessed.
-generated-members = ['numpy.*', 'scipy.*', 'sklearn.*', 'torch.*']
-
-[tool.pylint.similarities]
-min-similarity-lines = 3
-ignore-imports = true
-ignore-signatures = true
-
-[tool.pylint.design]
-max-attributes = 10
-max-args = 8
-
-[tool.pylint.message_control]
-disable = [
-    "no-else-break",
-    "no-else-continue",
-    "no-else-raise",
-    "no-else-return",
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
+    [project.urls]
+
+    Homepage = "https://github.com/LTS4/graph-learning"
+    Issues = "https://github.com/LTS4/graph-learning/issues"
+
+[tool.setuptools-git-versioning]
+enabled = true
+
+[tool.pylint]
+
+    [tool.pylint.master]
+    docstring-min-length = 5
+
+    [tool.pylint.format]
+    max-line-length = 100
+
+    [tool.pylint.basic]
+    good-names = ['f', 'N', 'n', 'i', 'j', 'k', 'df', 'ax', 'ex', 'lr', 'Run', '_']
+    good-names-rgxs = ['x(\d*|_[\w\d]*)', 'X(\d*|_[\w\d]*)', 'y(\d*|_[\w\d]*)']
+    no-docstring-rgx = '^_|^fit$'
+
+    [tool.pylint.typecheck]
+    # List of members which are set dynamically and missed by Pylint inference
+    # system, and so shouldn't trigger E1101 when accessed.
+    generated-members = ['numpy.*', 'scipy.*', 'sklearn.*']
+
+    [tool.pylint.similarities]
+    min-similarity-lines = 3
+    ignore-imports = true
+    ignore-signatures = true
+
+    [tool.pylint.design]
+    max-attributes = 10
+    max-args = 8
+
+    [tool.pylint.message_control]
+    disable = [
+        "no-else-break",
+        "no-else-continue",
+        "no-else-raise",
+        "no-else-return",
+    ]
 
 [tool.black]
+
 line-length = 100
 target-version = ['py310']
 include = '\.pyi?$'
 
 [tool.isort]
+
 profile = "black"
 multi_line_output = 3
 extend_skip_glob = ["env/*"]

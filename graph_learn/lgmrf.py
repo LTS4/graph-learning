@@ -1,5 +1,5 @@
 """Model for Laplacian-constrained Gaussian Markov Random Field"""
-import matplotlib.pyplot as plt
+
 import numpy as np
 from numpy.typing import NDArray
 from sklearn.base import BaseEstimator
@@ -233,13 +233,3 @@ class LGMRF(BaseEstimator):
             return self._ggl_fit(x)
         else:
             raise NotImplementedError(f"{self.laplacian_set} is not available yet")
-
-    def plot_weights(self, ax=None):
-        """Plot weights"""
-        x = -self.laplacian_
-        np.fill_diagonal(x, 0)
-        if ax is None:
-            _fig, ax = plt.subplots()
-
-        ax.imshow(x)
-        return ax
