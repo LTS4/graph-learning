@@ -24,13 +24,14 @@ keywords = [
     "time series",
 ]
 readme = "README.md"
+license = { text = "BSD-3-Clause" }
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.2.1",
     "scikit-learn",
     "tqdm",
 ]
-license = { text = "BSD-3-Clause" }
+optional-dependencies = { dev = ["pylint", "pytest", "black", "isort"] }
 
 classifiers = [
     "Programming Language :: Python :: 3",
