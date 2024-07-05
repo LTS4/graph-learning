@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 
-name = "graph_learn"
+name = "graph_structure_learning"
 dynamic = ["version"]
 authors = [
     { name = "William Cappelletti", email = "william.cappelletti@epfl.ch" },
@@ -31,7 +31,6 @@ dependencies = [
     "scikit-learn",
     "tqdm",
 ]
-optional-dependencies = { dev = ["pylint", "pytest", "black", "isort"] }
 
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -42,10 +41,18 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
+    [project.optional-dependencies]
+
+    dev = ["pylint", "pytest", "black", "isort"]
+    build = ["build", "twine"]
+
     [project.urls]
 
     Homepage = "https://github.com/LTS4/graph-learning"
     Issues = "https://github.com/LTS4/graph-learning/issues"
+
+[tool.setuptools.packages]
+find = {} # Scan the project directory with the default parameters
 
 [tool.setuptools-git-versioning]
 enabled = true
