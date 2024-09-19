@@ -27,7 +27,57 @@ from graph_learn.operators import (
 
 
 class GraphDictBase(ABC, BaseEstimator):
-    """Graph components learning original method"""
+    """Graph components learning original method
+
+    Args:
+        n_atoms (int, optional): Number of atoms to learn. Defaults to 1.
+        window_size (int, optional): Number of consecutive samples sharing coefficients.
+            Defaults to 1.
+        l1_w (float, optional): L1 regularization on the weights. Defaults to 0.
+        ortho_w (float, optional): Orthogonality constraint on the weights. Defaults to 0.
+        l1_c (float, optional): L1 regularization on the coefficients. Defaults to 0.
+        log_c (float, optional): Logbarrier regularization on the coefficients. Defaults to 0.
+        l1_diff_c (float, optional): L1 regularization on the difference of consecutive
+            coefficients. Defaults to 0.
+        max_iter (int, optional): Maximum number of pds iterations. Defaults to 1000.
+        step (float, optional): Step size for PDS updates. Defaults to 1, ignored if step_c, step_w
+            or step_dual are set.
+        step_c (float, optional): Step size for coefficients updates.
+            Defaults to :attr:`step` if None.
+        step_w (float, optional): Step size for weights updates. Defaults to :attr:`step` if None.
+        step_dual (float, optional): Step size for dual updates. Defaults to :attr:`step` if None.
+        tol (float, optional): Tolerance for convergence. Defaults to 1e-3.
+        reduce_step_on_plateau (bool, optional): Reduce step size if no improvement is seen.
+            Defaults to False.
+        random_state (RandomState, optional): Random state for reproducibility. Defaults to None.
+        init_strategy (str, optional): Initialization strategy for both weights and coefficients.
+            Defaults to "uniform". Available stategies are explaned for :attr:`init_strategy_c` and
+            :attr:`init_strategy_w`.
+        init_strategy_c (str, optional): Initialization strategy for coefficients. Defaults to None.
+            Possible values are:
+            - "uniform": Uniform random values between 0 and 1.
+            - "discrete": Random binary values.
+            - "exp": Exponential random values.
+            - "exact": Exact values from :attr:`coefficient_prior`.
+            - "k-means++d": K-means++ based on euclidean distance between signals.
+            - "k-means++c": K-means++ based on correlation between signals.
+        init_strategy_w (str, optional): Initialization strategy for weights. Defaults to None.
+            Possible values are:
+            - "uniform": Uniform random values between 0 and 1.
+            - "discrete": Random binary values.
+            - "exp": Exponential random values.
+            - "exact": Exact values from :attr:`weight_prior`.
+            - "correlation_a": Correlation based on coefficients.
+            - "correlation_d": Correlation based on random choice of coefficients.
+            - "correlation_a_pinv": Correlation based on coefficients with pseudo-inverse.
+            - "correlation_d_pinv": Correlation based on random choice of coefficients with
+                pseudo-inverse.
+        n_init (int, optional): Number of initializations. Defaults to 1.
+        weight_prior (float | NDArray, optional): Weight prior for initialization,
+        coefficient_prior (float | NDArray, optional): Coefficient prior for initialization.
+        early_stop_keyboard (bool, optional): Wether to stop training on keyboard interrupt.
+            Defaults to False, in which case KeiboardInterrupt is raised.
+    """
 
     # INITIALIZATION ###############################################################################
 
@@ -55,7 +105,6 @@ class GraphDictBase(ABC, BaseEstimator):
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
         coefficient_prior: float | NDArray[np.float_] = None,
-        verbose: int = 0,
         early_stop_keyboard: bool = False,
     ) -> None:
         super().__init__()
@@ -89,7 +138,6 @@ class GraphDictBase(ABC, BaseEstimator):
         self.weight_prior = weight_prior
         self.coefficient_prior = coefficient_prior
 
-        self.verbose = verbose
         self.early_stop_keyboard = early_stop_keyboard
 
         self._sq_pdiffs: NDArray[np.float_]  # shape (n_atoms, n_edges )

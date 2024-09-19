@@ -47,7 +47,6 @@ class GraphDictionary(GraphDictBase):
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
         coefficient_prior: float | NDArray[np.float_] = None,
-        verbose: int = 0,
         combination_update: bool = False,
     ) -> None:
         super().__init__(
@@ -69,7 +68,6 @@ class GraphDictionary(GraphDictBase):
             n_init=n_init,
             weight_prior=weight_prior,
             coefficient_prior=coefficient_prior,
-            verbose=verbose,
         )
 
         # Combinations are binary representation of their column index
