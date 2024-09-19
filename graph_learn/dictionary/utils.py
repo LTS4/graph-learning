@@ -1,20 +1,21 @@
 """Utility function for dictionary learning"""
+
 import numpy as np
 from numpy.random import RandomState
 from numpy.typing import NDArray
 
 
-def mc_activations(
-    activations: NDArray[np.float_], mc_samples: int, random_state: RandomState
+def mc_coefficients(
+    coefficients: NDArray[np.float_], mc_samples: int, random_state: RandomState
 ) -> NDArray[np.float_]:
-    """Sample combinations of activations using Monte-Carlo"""
-    n_atoms, n_samples = activations.shape
+    """Sample combinations of coefficients using Monte-Carlo"""
+    n_atoms, n_samples = coefficients.shape
     combination_map = 2 ** np.arange(n_atoms)
     arange = np.arange(n_samples)
 
     out = np.zeros((2**n_atoms, n_samples), dtype=float)
     for _ in range(mc_samples):
-        sampled = combination_map @ (random_state.uniform(size=activations.shape) <= activations)
+        sampled = combination_map @ (random_state.uniform(size=coefficients.shape) <= coefficients)
 
         out[sampled, arange] += 1
 
@@ -36,18 +37,18 @@ def powerset_matrix(n_atoms: int) -> NDArray[np.int_]:
 
 
 def combinations_prob(
-    activations: NDArray[np.float_], pwset_mat: NDArray[np.int_] = None
+    coefficients: NDArray[np.float_], pwset_mat: NDArray[np.int_] = None
 ) -> NDArray[np.float_]:
-    """Compute exact probability of each combination of activations"""
+    """Compute exact probability of each combination of coefficients"""
     if pwset_mat is None:
-        pwset_mat = powerset_matrix(activations.shape[0])
+        pwset_mat = powerset_matrix(coefficients.shape[0])
 
     # This is faster that broadcasting
     return np.prod(
         np.where(
             pwset_mat[:, :, np.newaxis],
-            activations[:, np.newaxis, :],
-            1 - activations[:, np.newaxis, :],
+            coefficients[:, np.newaxis, :],
+            1 - coefficients[:, np.newaxis, :],
         ),
         axis=0,
     )

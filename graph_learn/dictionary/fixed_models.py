@@ -10,7 +10,7 @@ from .utils import powerset_matrix
 class FixedWeights(GraphDictExact):
     """Subclass of :class:`GraphDictionary` with fixed weights.
 
-    Only Activations are optimized.
+    Only Coefficients are optimized.
     """
 
     def __init__(self, *args, **kwargs) -> None:
@@ -91,42 +91,42 @@ class FixedWeights(GraphDictExact):
         return super().fit(*_args, **_kwargs)
 
 
-class FixedActivations(GraphDictExact):
-    """Subclass of :class:`GraphDictionary` with fixed activations.
+class FixedCoefficients(GraphDictExact):
+    """Subclass of :class:`GraphDictionary` with fixed coefficients.
 
     Only weights are optimized.
     """
 
-    def _init_activations(self, x) -> NDArray[np.float_]:
+    def _init_coefficients(self, x) -> NDArray[np.float_]:
         expected_shape = (self.n_atoms, x.shape[0])
 
-        if isinstance(self.activation_prior, (np.ndarray, list)):
-            self.activation_prior = np.array(self.activation_prior, dtype=float)
-            if self.activation_prior.shape != expected_shape:
+        if isinstance(self.coefficient_prior, (np.ndarray, list)):
+            self.coefficient_prior = np.array(self.coefficient_prior, dtype=float)
+            if self.coefficient_prior.shape != expected_shape:
                 raise ValueError(
-                    f"Invalid activation prior shape, expected {expected_shape},"
-                    f" got {self.activation_prior.shape}"
+                    f"Invalid coefficient prior shape, expected {expected_shape},"
+                    f" got {self.coefficient_prior.shape}"
                 )
-            activations = self.activation_prior
+            coefficients = self.coefficient_prior
 
-        elif isinstance(self.activation_prior, (float, int)):
-            activations = self.activation_prior * np.ones_like(activations)
+        elif isinstance(self.coefficient_prior, (float, int)):
+            coefficients = self.coefficient_prior * np.ones_like(coefficients)
 
         else:
             raise TypeError(
-                "Activation prior must be real number or a numpy array"
-                f", got {type(self.activation_prior)}"
+                "Coefficient prior must be real number or a numpy array"
+                f", got {type(self.coefficient_prior)}"
             )
 
-        return activations
+        return coefficients
 
     # def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float_]:
     #     return self.combi_p_
 
-    def _update_activations(
-        self, sq_pdiffs: NDArray, activations: NDArray, dual: NDArray, op_norm=1
+    def _update_coefficients(
+        self, sq_pdiffs: NDArray, coefficients: NDArray, dual: NDArray, op_norm=1
     ) -> NDArray:
-        return activations
+        return coefficients
 
     def predict(self, x) -> NDArray[np.float_]:
         raise NotImplementedError
@@ -165,12 +165,12 @@ def fixw_from_full(model: GraphDictExact) -> FixedWeights:
         reduce_step_on_plateau=model.reduce_step_on_plateau,
         random_state=model.random_state,
         init_strategy=model.init_strategy,
-        activation_prior=model.activation_prior,
+        coefficient_prior=model.coefficient_prior,
         verbose=model.verbose,
     )
 
 
-class GraphDictHier(FixedActivations):
+class GraphDictHier(FixedCoefficients):
     def __init__(self, depth: int, **kwargs) -> None:
         super().__init__(
             n_atoms=2 ** (depth) - 1,
@@ -184,18 +184,18 @@ class GraphDictHier(FixedActivations):
         self.window_size = int(np.ceil(n_samples / n_windows))
 
         # shape (n_atoms, n_samples)
-        self.activation_prior = np.zeros((self.n_atoms, n_windows))
+        self.coefficient_prior = np.zeros((self.n_atoms, n_windows))
         atom = 0
         for d in range(self.depth):
             n_rep = 2**d
             win_width = n_windows // n_rep
             for rep in range(n_rep):
                 start = rep * win_width
-                self.activation_prior[atom, start : start + win_width] = 1
+                self.coefficient_prior[atom, start : start + win_width] = 1
                 atom += 1
 
-        self.activation_prior = np.repeat(self.activation_prior, repeats=self.window_size, axis=1)[
-            :, :n_samples
-        ]
+        self.coefficient_prior = np.repeat(
+            self.coefficient_prior, repeats=self.window_size, axis=1
+        )[:, :n_samples]
 
         super()._initialize(x)

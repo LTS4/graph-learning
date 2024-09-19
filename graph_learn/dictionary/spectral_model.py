@@ -24,7 +24,7 @@ class GraphDictSpectral(GraphDictExact):
             = \sum_t\sum_k \delta_{kt} x_t^\top U^\top \Lambda_k U x_t
             = \sum_{tkn} \delta_{kt} \lambda_{kn} [X U^\top]_{tn}^2
 
-    I can magically reuse :method:`GraphDictBase._update_activations` since the only difference is
+    I can magically reuse :method:`GraphDictBase._update_coefficients` since the only difference is
     in the smoothness term, which now uses eigenvalues instead of weights, and squared GFT signals
     instead of sq_pdiffs.
 
@@ -79,24 +79,24 @@ class GraphDictSpectral(GraphDictExact):
 
     # UPDATE FUNCTIONS #############################################################################
 
-    def _op_adj_activations(self, weights: NDArray, dualv: NDArray) -> NDArray:
+    def _op_adj_coefficients(self, weights: NDArray, dualv: NDArray) -> NDArray:
         return weights @ dualv.T
 
-    def _op_adj_weights(self, activations: NDArray, dualv: NDArray) -> NDArray:
-        return activations @ dualv
+    def _op_adj_weights(self, coefficients: NDArray, dualv: NDArray) -> NDArray:
+        return coefficients @ dualv
 
     # FIXME: Should I leave weights update in spectral space (as it is now?)
 
-    def _update_dual(self, weights: NDArray, activations: NDArray, dual: NDArray):
+    def _update_dual(self, weights: NDArray, coefficients: NDArray, dual: NDArray):
         # I work directly in eigenvalue space
 
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)
 
-        n_atoms, _n_samples = activations.shape
+        n_atoms, _n_samples = coefficients.shape
         sigma = self.step_dual / n_atoms
 
-        step = activations.T @ weights
+        step = coefficients.T @ weights
         return prox_gdet_star_spectral_update(sigma=sigma, eigvals=dual + sigma * step)
 
     def score(self, x: NDArray[np.float_], _y=None) -> float:

@@ -54,7 +54,7 @@ class GraphDictBase(ABC, BaseEstimator):
         init_strategy_w: str = None,
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
-        activation_prior: float | NDArray[np.float_] = None,
+        coefficient_prior: float | NDArray[np.float_] = None,
         verbose: int = 0,
         early_stop_keyboard: bool = False,
     ) -> None:
@@ -87,14 +87,14 @@ class GraphDictBase(ABC, BaseEstimator):
         self.init_strategy_w = init_strategy_w or init_strategy
         self.n_init = n_init
         self.weight_prior = weight_prior
-        self.activation_prior = activation_prior
+        self.coefficient_prior = coefficient_prior
 
         self.verbose = verbose
         self.early_stop_keyboard = early_stop_keyboard
 
         self._sq_pdiffs: NDArray[np.float_]  # shape (n_atoms, n_edges )
 
-        self.activations_: NDArray[np.float_]  # shape (n_atoms, n_samples)
+        self.coefficients_: NDArray[np.float_]  # shape (n_atoms, n_samples)
         self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
         self.dual_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
@@ -102,32 +102,32 @@ class GraphDictBase(ABC, BaseEstimator):
         self.history_: pd.DataFrame
         self.fit_time_: float
 
-    def _init_activations(self, x: NDArray) -> NDArray[np.float_]:
+    def _init_coefficients(self, x: NDArray) -> NDArray[np.float_]:
         n_samples = x.shape[0]
-        activations = np.ones((self.n_atoms, n_samples // self.window_size))
+        coefficients = np.ones((self.n_atoms, n_samples // self.window_size))
 
         match self.init_strategy_a:
             case "uniform":
-                if not isinstance(self.activation_prior, (list, np.ndarray)):
-                    activations = self.random_state.uniform(size=(self.n_atoms, n_samples))
+                if not isinstance(self.coefficient_prior, (list, np.ndarray)):
+                    coefficients = self.random_state.uniform(size=(self.n_atoms, n_samples))
 
-                if self.activation_prior is not None:
-                    activations *= self.activation_prior
+                if self.coefficient_prior is not None:
+                    coefficients *= self.coefficient_prior
 
             case "discrete":
-                activations = self.random_state.uniform(size=(self.n_atoms, n_samples)) < (
-                    self.activation_prior or 0.5
+                coefficients = self.random_state.uniform(size=(self.n_atoms, n_samples)) < (
+                    self.coefficient_prior or 0.5
                 )
-                activations = activations.astype(float)
+                coefficients = coefficients.astype(float)
 
             case "exp":
-                activations = self.random_state.exponential(
-                    scale=self.activation_prior or 1, size=activations.shape
+                coefficients = self.random_state.exponential(
+                    scale=self.coefficient_prior or 1, size=coefficients.shape
                 )
 
             case "exact":
-                if self.activation_prior is not None:
-                    activations *= self.activation_prior
+                if self.coefficient_prior is not None:
+                    coefficients *= self.coefficient_prior
 
             case "k-means++d":
                 # Distance based
@@ -135,8 +135,8 @@ class GraphDictBase(ABC, BaseEstimator):
                 # shape: (n_atoms, n_samples)
                 dists = np.sum((x[np.newaxis, :, :] - centers[:, np.newaxis, :]) ** 2, axis=2)
 
-                activations.fill(0)
-                activations[np.argmin(dists, axis=0), np.arange(n_samples)] = 1
+                coefficients.fill(0)
+                coefficients[np.argmin(dists, axis=0), np.arange(n_samples)] = 1
 
             case "k-means++c":
                 # Alignement/correlation based
@@ -148,18 +148,18 @@ class GraphDictBase(ABC, BaseEstimator):
                     @ (centers / np.linalg.norm(centers, axis=1, keepdims=True)).T
                 )
 
-                activations.fill(0)
-                activations[np.argmax(corr_abs, axis=1), np.arange(n_samples)] = 1
+                coefficients.fill(0)
+                coefficients[np.argmax(corr_abs, axis=1), np.arange(n_samples)] = 1
 
             case _:
-                raise ValueError(f"Invalid init_strategy for activations: {self.init_strategy_a}")
+                raise ValueError(f"Invalid init_strategy for coefficients: {self.init_strategy_a}")
 
-        activations[activations < 0] = 0
-        activations[activations > 1] = 1
+        coefficients[coefficients < 0] = 0
+        coefficients[coefficients > 1] = 1
 
         if self.window_size > 1:
-            activations = np.repeat(activations, self.window_size, axis=1)[:, :n_samples]
-        return activations
+            coefficients = np.repeat(coefficients, self.window_size, axis=1)[:, :n_samples]
+        return coefficients
 
     def _init_weigths(self, x: NDArray = None) -> NDArray[np.float_]:
         n_samples, n_nodes = x.shape
@@ -193,8 +193,8 @@ class GraphDictBase(ABC, BaseEstimator):
             case ["correlation", choice, *other]:
                 match choice:
                     case "a":
-                        # Stands for Activations
-                        choices = np.argmax(self.activations_, axis=0)
+                        # Stands for Coefficients
+                        choices = np.argmax(self.coefficients_, axis=0)
                     case "d":
                         # Stands for Discrete
                         choices = self.random_state.choice(
@@ -226,7 +226,7 @@ class GraphDictBase(ABC, BaseEstimator):
     def _initialize(self, x: NDArray) -> None:
         self.n_nodes_ = x.shape[1]
 
-        self.activations_ = self._init_activations(x)
+        self.coefficients_ = self._init_coefficients(x)
         self.weights_ = self._init_weigths(x)
         self.dual_ = self._init_dual(x)
 
@@ -234,7 +234,7 @@ class GraphDictBase(ABC, BaseEstimator):
         self.fit_time_ = -1
         self.history_ = pd.DataFrame(
             data=-np.ones((self.max_iter, 2), dtype=float),
-            columns=["activ_change", "weight_change"],
+            columns=["coefficient_change", "weight_change"],
             index=np.arange(self.max_iter),
         )
 
@@ -246,35 +246,35 @@ class GraphDictBase(ABC, BaseEstimator):
     # UPDATE ACTIVATIONS ###########################################################################
 
     @abstractmethod
-    def _op_adj_activations(self, weights: NDArray, dualv: NDArray) -> NDArray:
-        """Compute the adjoint of the bilinear inst-degree operator wrt activations
+    def _op_adj_coefficients(self, weights: NDArray, dualv: NDArray) -> NDArray:
+        """Compute the adjoint of the bilinear inst-degree operator wrt coefficients
 
         Args:
             weights (NDArray): Array of weights of shape (n_components, n_edges)
             dualv (NDArray): Instantaneous degrees, of shape (n_nodes, n_samples)
 
         Returns:
-            NDArray: Adjoint activations of shape (n_components, n_samples)
+            NDArray: Adjoint coefficients of shape (n_components, n_samples)
         """
         raise NotImplementedError
 
-    def _update_activations(
+    def _update_coefficients(
         self,
         sq_pdiffs: NDArray[np.float_],
-        activations: NDArray[np.float_],
+        coefficients: NDArray[np.float_],
         dual: NDArray[np.float_],
     ) -> NDArray[np.float_]:
-        """Update activations
+        """Update coefficients
 
         Args:
             sq_pdiffs (NDArray[np.float_]): Squared pairwise differences of
                 shape (n_samples, n_edges)
-            activations (NDArray[np.float_]): Current activations of shape (n_atoms, n_samples)
+            coefficients (NDArray[np.float_]): Current coefficients of shape (n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
                 of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
+            NDArray[np.float_]: Updated coefficients of shape (n_atoms, n_samples)
         """
 
         n_samples = sq_pdiffs.shape[0]
@@ -289,40 +289,40 @@ class GraphDictBase(ABC, BaseEstimator):
         step += self.l1_a * n_samples
 
         if self.log_a > 0:
-            # step -= self.log_a / activations.sum(axis=0, keepdims=True)
-            activations[:, activations.sum(0) < 1e-8] = self.log_a
+            # step -= self.log_a / coefficients.sum(axis=0, keepdims=True)
+            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_a
 
         if self.l1_diff_a > 0:
             step -= (
                 self.l1_diff_a
                 * n_samples
-                * (np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0))
+                * (np.diff(np.sign(np.diff(coefficients, axis=1)), axis=1, prepend=0, append=0))
             )
 
-        dual_step = self._op_adj_activations(self.weights_, dual)
+        dual_step = self._op_adj_coefficients(self.weights_, dual)
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        activations = activations - self.step_a / n_samples * (dual_step + step)
+        coefficients = coefficients - self.step_a / n_samples * (dual_step + step)
 
         # Projection
-        activations[activations < 0] = 0
-        activations[activations > 1] = 1
+        coefficients[coefficients < 0] = 0
+        coefficients[coefficients > 1] = 1
 
-        if np.allclose(activations, 0):
-            warn("All activations dropped to 0", UserWarning)
-            activations.fill(self.log_a)
+        if np.allclose(coefficients, 0):
+            warn("All coefficients dropped to 0", UserWarning)
+            coefficients.fill(self.log_a)
 
-        return activations
+        return coefficients
 
     # UPDATE WEIGHTS ###############################################################################
 
     @abstractmethod
-    def _op_adj_weights(self, activations: NDArray, dualv: NDArray) -> NDArray:
+    def _op_adj_weights(self, coefficients: NDArray, dualv: NDArray) -> NDArray:
         """Compute the adjoint of the bilinear inst-degree operator wrt weights
 
         Args:
-            activations (NDArray): Array of activations of shape (n_components, n_samples)
+            coefficients (NDArray): Array of coefficients of shape (n_components, n_samples)
             dualv (NDArray): Instantaneous degrees, of shape (n_nodes, n_samples)
 
         Returns:
@@ -349,13 +349,13 @@ class GraphDictBase(ABC, BaseEstimator):
         n_samples = sq_pdiffs.shape[0]
 
         # Smoothness
-        step = self.activations_ @ sq_pdiffs
+        step = self.coefficients_ @ sq_pdiffs
         step += self.l1_w * n_samples
 
         if self.ortho_w > 0:
             step += self.ortho_w * n_samples * (weights.sum(0, keepdims=True) - weights)
 
-        dual_step = self._op_adj_weights(self.activations_, dual)
+        dual_step = self._op_adj_weights(self.coefficients_, dual)
 
         # Proximal update
         weights = weights - self.step_w / n_samples * (dual_step + step)
@@ -370,7 +370,7 @@ class GraphDictBase(ABC, BaseEstimator):
     def _update_dual(
         self,
         weights: NDArray[np.float_],
-        activations: NDArray[np.float_],
+        coefficients: NDArray[np.float_],
         dual: NDArray[np.float_],
     ):
         raise NotImplementedError
@@ -380,9 +380,9 @@ class GraphDictBase(ABC, BaseEstimator):
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
 
-        activations = np.repeat(
-            self._update_activations(
-                sq_pdiffs, self.activations_[:, :: self.window_size], dual=self.dual_
+        coefficients = np.repeat(
+            self._update_coefficients(
+                sq_pdiffs, self.coefficients_[:, :: self.window_size], dual=self.dual_
             ),
             repeats=self.window_size,
             axis=1,
@@ -392,18 +392,18 @@ class GraphDictBase(ABC, BaseEstimator):
         )
 
         # dual update
-        # x_overshoot = 2 * activations - self.activations_
+        # x_overshoot = 2 * coefficients - self.coefficients_
         self.dual_ = self._update_dual(
             weights=2 * weights - self.weights_,
-            activations=2 * activations[:, :: self.window_size]
-            - self.activations_[:, :: self.window_size],
+            coefficients=2 * coefficients[:, :: self.window_size]
+            - self.coefficients_[:, :: self.window_size],
             dual=self.dual_,
         )
 
-        a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
+        a_rel_change = relative_error(self.coefficients_.ravel(), coefficients.ravel())
         w_rel_change = relative_error(self.weights_.ravel(), weights.ravel())
 
-        self.activations_ = activations
+        self.coefficients_ = coefficients
         self.weights_ = weights
 
         return a_rel_change, w_rel_change
@@ -489,7 +489,7 @@ class GraphDictBase(ABC, BaseEstimator):
             best = {
                 "score": None,
                 "weights": None,
-                "activations": None,
+                "coefficients": None,
                 "dual": None,
                 "converged": None,
                 "fit_time": None,
@@ -503,56 +503,58 @@ class GraphDictBase(ABC, BaseEstimator):
                 if best["score"] is None or score < best["score"]:
                     best["score"] = score
                     best["weights"] = self.weights_
-                    best["activations"] = self.activations_
+                    best["coefficients"] = self.coefficients_
                     best["dual"] = self.dual_
                     best["converged"] = self.converged_
                     best["fit_time"] = self.fit_time_
                     best["history"] = self.history_
 
             self.weights_ = best["weights"]
-            self.activations_ = best["activations"]
+            self.coefficients_ = best["coefficients"]
             self.dual_ = best["dual"]
             self.converged_ = best["converged"]
             self.fit_time_ = best["fit_time"]
             self.history_ = best["history"]
 
-        self.activations_ = self.activations_[:, :n_samples]
+        self.coefficients_ = self.coefficients_[:, :n_samples]
         return self
 
     # PREDICT ######################################################################################
 
     def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
-        """Predict activations for a given signal"""
+        """Predict coefficients for a given signal"""
         n_samples, n_nodes = x.shape
         if n_nodes != self.n_nodes_:
             raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
 
-        activations = self._init_activations(x)
+        coefficients = self._init_coefficients(x)
         dual = self._init_dual(x)
 
-        # op_act_norm = op_activations_norm(laplacian_squareform_vec(self.weights_))
+        # op_act_norm = op_coefficients_norm(laplacian_squareform_vec(self.weights_))
 
         sq_pdiffs = self._squared_pdiffs(x)
 
         for _ in range(self.max_iter):
-            activations_u = np.repeat(
-                self._update_activations(sq_pdiffs, activations[:, :: self.window_size], dual=dual),
+            coefficients_u = np.repeat(
+                self._update_coefficients(
+                    sq_pdiffs, coefficients[:, :: self.window_size], dual=dual
+                ),
                 repeats=self.window_size,
                 axis=1,
             )
 
             dual = self._update_dual(
                 self.weights_,
-                2 * activations_u[:, :: self.window_size] - activations[:, :: self.window_size],
+                2 * coefficients_u[:, :: self.window_size] - coefficients[:, :: self.window_size],
                 dual,
             )
 
-            if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
-                return activations_u
+            if np.linalg.norm((coefficients_u - coefficients).ravel()) < self.tol:
+                return coefficients_u
 
-            activations = activations_u
+            coefficients = coefficients_u
 
-        return activations[:, :n_samples]
+        return coefficients[:, :n_samples]
 
     # SCORING ######################################################################################
 
@@ -567,7 +569,7 @@ class GraphDictBase(ABC, BaseEstimator):
             float: Score of the model
         """
         # lw(self.weights_) + 1/self.n_samples * (
-        #     la(self.activations_) + sum_t(
+        #     la(self.coefficients_) + sum_t(
         #        - np.log(gdet(L_inst)) + x.T @ L_inst @ x
         #    )
         # )
@@ -577,7 +579,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         # sum of L1 norm, orthogonality and smoothness
         weight_loss = self.l1_w * np.abs(self.weights_).sum() + dictionary_smoothness(  # L1
-            self.activations_, self.weights_, x
+            self.coefficients_, self.weights_, x
         )
 
         if self.ortho_w > 0:
@@ -586,20 +588,20 @@ class GraphDictBase(ABC, BaseEstimator):
                 np.sum(self.weights_.T @ self.weights_) - np.linalg.norm(self.weights_) ** 2
             )
 
-        activation_loss = self.l1_a * np.abs(self.activations_).sum()
+        coefficient_loss = self.l1_a * np.abs(self.coefficients_).sum()
         if self.log_a > 0:
-            activation_loss -= self.log_a * np.sum(np.log(self.activations_.sum(0)))
+            coefficient_loss -= self.log_a * np.sum(np.log(self.coefficients_.sum(0)))
         if self.l1_diff_a > 0:
             warn("Check diff loss", UserWarning)
-            activation_loss -= self.l1_diff_a * np.linalg.norm(
-                np.diff(np.sign(np.diff(self.activations_, axis=1)), axis=1, prepend=0, append=0)
+            coefficient_loss -= self.l1_diff_a * np.linalg.norm(
+                np.diff(np.sign(np.diff(self.coefficients_, axis=1)), axis=1, prepend=0, append=0)
             )
 
         # Sum of log determinants
         eigvals = np.linalg.eigvalsh(
-            np.einsum("kc,knm->cnm", self.activations_, laplacian_squareform_vec(self.weights_))
+            np.einsum("kc,knm->cnm", self.coefficients_, laplacian_squareform_vec(self.weights_))
         )
         # shape: (n_samples, n_combi) x (n_combi,)
         loggdet = np.sum(np.log(np.where(eigvals > 0, eigvals, 1)).sum(-1))
 
-        return weight_loss + (activation_loss - loggdet)
+        return weight_loss + (coefficient_loss - loggdet)
