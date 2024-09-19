@@ -332,11 +332,6 @@ class GraphDictBase(ABC, BaseEstimator):
             index=np.arange(self.max_iter),
         )
 
-    # UTILITY FUNCTIONS ############################################################################
-
-    def _squared_pdiffs(self, x: NDArray) -> NDArray:
-        return squared_pdiffs(x)
-
     # UPDATE ACTIVATIONS ###########################################################################
 
     @abstractmethod
@@ -513,7 +508,7 @@ class GraphDictBase(ABC, BaseEstimator):
     ) -> GraphDictBase:
         self._initialize(x)
 
-        sq_pdiffs = self._squared_pdiffs(x)  # shape: (n_samples, n_edges)
+        sq_pdiffs = squared_pdiffs(x)  # shape: (n_samples, n_edges)
 
         if callback is not None:
             callback(self, 0)
