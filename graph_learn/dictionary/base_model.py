@@ -162,6 +162,17 @@ class GraphDictBase(ABC, BaseEstimator):
         self.fit_time_: float
 
     def _init_coefficients(self, x: NDArray) -> NDArray[np.float_]:
+        """Initialize coefficients based on :attr:`init_strategy_c`
+
+        Args:
+            x (NDArray): Input signal of shape (n_samples, n_nodes)
+
+        Raises:
+            ValueError: Invalid init_strategy for coefficients
+
+        Returns:
+            NDArray[np.float_]: Initialized coefficients of shape (n_atoms, n_samples)
+        """
         n_samples = x.shape[0]
         coefficients = np.ones((self.n_atoms, n_samples // self.window_size))
 
@@ -221,6 +232,17 @@ class GraphDictBase(ABC, BaseEstimator):
         return coefficients
 
     def _init_weigths(self, x: NDArray = None) -> NDArray[np.float_]:
+        """Initialize weights based on :attr:`init_strategy_w`
+
+        Args:
+            x (NDArray, optional): Input signal of shape (n_samples, n_nodes). Defaults to None.
+
+        Raises:
+            ValueError: Invalid init_strategy for weights
+
+        Returns:
+            NDArray[np.float_]: Initialized weights of shape (n_atoms, n_edges)
+        """
         n_samples, n_nodes = x.shape
         weights = np.ones((self.n_atoms, (n_nodes**2 - n_nodes) // 2))
 
@@ -279,10 +301,23 @@ class GraphDictBase(ABC, BaseEstimator):
         return weights
 
     def _init_dual(self, x: NDArray) -> NDArray:
+        """Initialize dual variable to zeros.
+
+        Args:
+            x (NDArray): Input signal of shape (n_samples, n_nodes)
+
+        Returns:
+            NDArray: Initialized dual variable of shape (n_samples, n_nodes, n_nodes)
+        """
         n_samples, n_nodes = x.shape
         return np.zeros((n_samples // self.window_size, n_nodes, n_nodes))
 
     def _initialize(self, x: NDArray) -> None:
+        """Initialize the model
+
+        Args:
+            x (NDArray): Input signal of shape (n_samples, n_nodes)
+        """
         self.n_nodes_ = x.shape[1]
 
         self.coefficients_ = self._init_coefficients(x)
