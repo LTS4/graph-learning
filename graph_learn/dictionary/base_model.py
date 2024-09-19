@@ -340,7 +340,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         Args:
             weights (NDArray): Array of weights of shape (n_components, n_edges)
-            dualv (NDArray): Instantaneous degrees, of shape (n_nodes, n_samples)
+            dualv (NDArray): Dual variable of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
             NDArray: Adjoint coefficients of shape (n_components, n_samples)
@@ -412,7 +412,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         Args:
             coefficients (NDArray): Array of coefficients of shape (n_components, n_samples)
-            dualv (NDArray): Instantaneous degrees, of shape (n_nodes, n_samples)
+            dualv (NDArray): Dual variable of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
             NDArray: Dual weights of shape (n_components, n_edges)
@@ -428,7 +428,9 @@ class GraphDictBase(ABC, BaseEstimator):
         """Update the weights of the model
 
         Args:
-            x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
+            sq_pdiffs (NDArray[np.float_]): Squared pairwise differences of
+                shape (n_samples, n_edges)
+            weights (NDArray[np.float_]): Current weights of shape (n_atoms, n_edges)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
                 of shape (n_samples, n_nodes, n_nodes)
 
@@ -462,9 +464,29 @@ class GraphDictBase(ABC, BaseEstimator):
         coefficients: NDArray[np.float_],
         dual: NDArray[np.float_],
     ):
+        """Update the dual variable
+
+        Args:
+            weights (NDArray[np.float_]): Weights of shape (n_atoms, n_edges)
+            coefficients (NDArray[np.float_]): Coefficients of shape (n_atoms, n_samples)
+            dual (NDArray[np.float_]): Dual variable of shape (n_samples, n_nodes, n_nodes)
+
+        Returns:
+            NDArray[np.float_]: Updated dual variable of shape (n_samples, n_nodes, n_nodes)
+        """
+
         raise NotImplementedError
 
     def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> tuple[float, float]:
+        """Single step of PDS optimization
+
+        Args:
+            sq_pdiffs (NDArray[np.float_]): Squared pairwise differences of
+                shape (n_samples, n_edges)
+
+        Returns:
+            tuple[float, float]: Relative change in coefficients and weights
+        """
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
         # y1 = prox_gy(y - step * (op_adjy(y, dualv) + gradf_y(x, y, gz)), step)
@@ -506,6 +528,14 @@ class GraphDictBase(ABC, BaseEstimator):
         *,
         callback: Callable[[GraphDictBase, int]] = None,
     ) -> GraphDictBase:
+        """Fit the model to the data with a single initialization
+
+        Args:
+            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+            y (None, optional): Ignored. Defaults to None.
+            callback (Callable[[GraphDictBase, int]], optional): Callback function
+                called at each iteration. Defaults to None.
+        """
         self._initialize(x)
 
         sq_pdiffs = squared_pdiffs(x)  # shape: (n_samples, n_edges)
@@ -554,7 +584,7 @@ class GraphDictBase(ABC, BaseEstimator):
     def fit(
         self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictBase, int]] = None
     ):
-        """Fit the model to the data
+        """Fit the model to the data, possibly on multiple initializations
 
         Args:
             x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
@@ -621,7 +651,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         # op_act_norm = op_coefficients_norm(laplacian_squareform_vec(self.weights_))
 
-        sq_pdiffs = self._squared_pdiffs(x)
+        sq_pdiffs = squared_pdiffs(x)
 
         for _ in range(self.max_iter):
             coefficients_u = np.repeat(
