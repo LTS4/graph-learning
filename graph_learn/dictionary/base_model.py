@@ -77,6 +77,17 @@ class GraphDictBase(ABC, BaseEstimator):
         coefficient_prior (float | NDArray, optional): Coefficient prior for initialization.
         early_stop_keyboard (bool, optional): Wether to stop training on keyboard interrupt.
             Defaults to False, in which case KeiboardInterrupt is raised.
+
+    Attributes:
+        coefficients_ (NDArray[np.float_]): Coefficients of the model of shape (n_atoms, n_samples).
+        weights_ (NDArray[np.float_]): Weights of the model of shape (n_atoms, n_edges).
+        dual_ (NDArray[np.float_]): Dual variable of the model of shape
+            (n_samples, n_nodes, n_nodes).
+        n_nodes_ (int): Number of nodes in the graph.
+        converged_ (int): Number of iterations before convergence.
+        history_ (pd.DataFrame): History of the model during training.
+        fit_time_ (float): Time taken to fit the model.
+
     """
 
     # INITIALIZATION ###############################################################################
