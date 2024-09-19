@@ -20,7 +20,7 @@ class FixedWeights(GraphDictExact):
         self._eigvals: NDArray
         self._combi_lapl: NDArray
 
-    def _init_weigths(self, x: NDArray) -> NDArray[np.float_]:
+    def _init_weigths(self, x: NDArray) -> NDArray:
         n_nodes = x.shape[1]
         expected_shape = (self.n_atoms, n_nodes * (n_nodes - 1) // 2)
 
@@ -166,7 +166,6 @@ def fixw_from_full(model: GraphDictExact) -> FixedWeights:
         random_state=model.random_state,
         init_strategy=model.init_strategy,
         coefficient_prior=model.coefficient_prior,
-        verbose=model.verbose,
     )
 
 
