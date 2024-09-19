@@ -27,16 +27,16 @@ class GraphDictLog(GraphDictBase):
 
         self._sum_op, self._sum_op_t = sum_squareform(self.n_nodes_)
 
-    def _op_adj_activations(self, weights: NDArray, dualv: NDArray) -> NDArray:
+    def _op_adj_coefficients(self, weights: NDArray, dualv: NDArray) -> NDArray:
         return weights @ (self._sum_op_t @ dualv.T)
 
-    def _op_adj_weights(self, activations: NDArray, dualv: NDArray) -> NDArray:
-        return activations @ (self._sum_op_t @ dualv.T).T
+    def _op_adj_weights(self, coefficients: NDArray, dualv: NDArray) -> NDArray:
+        return coefficients @ (self._sum_op_t @ dualv.T).T
 
     def _update_dual(
         self,
         weights: NDArray[np.float_],
-        activations: NDArray[np.float_],
+        coefficients: NDArray[np.float_],
         dual: NDArray[np.float_],
     ):
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
@@ -44,7 +44,7 @@ class GraphDictLog(GraphDictBase):
 
         sigma = self.step_dual  # / _n_samples
 
-        step = self._sum_op @ weights.T @ activations
+        step = self._sum_op @ weights.T @ coefficients
         dual = dual + sigma * step.T
 
         return (dual - np.sqrt(dual**2 + 4 * sigma)) / 2

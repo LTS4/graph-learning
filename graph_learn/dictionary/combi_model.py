@@ -46,7 +46,7 @@ class GraphDictionary(GraphDictBase):
         init_strategy: str = "uniform",
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
-        activation_prior: float | NDArray[np.float_] = None,
+        coefficient_prior: float | NDArray[np.float_] = None,
         verbose: int = 0,
         combination_update: bool = False,
     ) -> None:
@@ -68,7 +68,7 @@ class GraphDictionary(GraphDictBase):
             init_strategy=init_strategy,
             n_init=n_init,
             weight_prior=weight_prior,
-            activation_prior=activation_prior,
+            coefficient_prior=coefficient_prior,
             verbose=verbose,
         )
 
@@ -89,12 +89,12 @@ class GraphDictionary(GraphDictBase):
     def _initialize(self, x: NDArray) -> None:
         super()._initialize(x)
 
-        self.combi_p_ = combinations_prob(self.activations_, self._combinations)
+        self.combi_p_ = combinations_prob(self.coefficients_, self._combinations)
         self.dual_eigvals_ = np.zeros(self.dual_.shape[:2])
 
         # self.combi_p_[0] = 0
         # self.combi_p_[1:] = simplex_projection(self.combi_p_[1:].T).T
-        # self.activations_ = self._combinations @ self.combi_p_
+        # self.coefficients_ = self._combinations @ self.combi_p_
 
     def _update_combi_p(
         self,
@@ -138,26 +138,26 @@ class GraphDictionary(GraphDictBase):
 
         return combi_p
 
-    def _update_activations(
+    def _update_coefficients(
         self,
         sq_pdiffs: NDArray[np.float_],
-        activations: NDArray[np.float_],
+        coefficients: NDArray[np.float_],
         combi_p: NDArray[np.float_],
         neg_dual_eigvals: NDArray[np.float_],
     ) -> NDArray[np.float_]:
         # pylint: disable=arguments-renamed
-        """Update activations
+        """Update coefficients
 
         Args:
             x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
-            activations (NDArray[np.float_]): Current activations of shape (n_atoms, n_samples)
+            coefficients (NDArray[np.float_]): Current coefficients of shape (n_atoms, n_samples)
             combi_p (NDArray[np.float_]): Probabilities of combinations for each sample.
                 Array of shape (2**n_atoms, n_samples)
             dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
                 of shape (2**n_atoms, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Updated activations of shape (n_atoms, n_samples)
+            NDArray[np.float_]: Updated coefficients of shape (n_atoms, n_samples)
         """
         n_samples = sq_pdiffs.shape[0]
         step_size = self.step_a / n_samples
@@ -178,7 +178,7 @@ class GraphDictionary(GraphDictBase):
 
         if self.l1_diff_a > 0:
             step -= self.l1_diff_a * (
-                np.diff(np.sign(np.diff(activations, axis=1)), axis=1, prepend=0, append=0)
+                np.diff(np.sign(np.diff(coefficients, axis=1)), axis=1, prepend=0, append=0)
             )
 
         # DUAL STEP
@@ -186,8 +186,8 @@ class GraphDictionary(GraphDictBase):
         inter = np.tile(
             np.where(
                 self._combinations[:, :, np.newaxis],
-                activations[:, np.newaxis, :],
-                1 - activations[:, np.newaxis, :],
+                coefficients[:, np.newaxis, :],
+                1 - coefficients[:, np.newaxis, :],
             ),
             reps=(self.n_atoms, 1, 1, 1),
         )
@@ -207,21 +207,21 @@ class GraphDictionary(GraphDictBase):
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        activations = activations - step_size * (step - dual_step)
+        coefficients = coefficients - step_size * (step - dual_step)
 
         # Projection
-        activations[activations < 0] = 0
-        activations[activations > 1] = 1
+        coefficients[coefficients < 0] = 0
+        coefficients[coefficients > 1] = 1
 
-        # Restore dropped activations
+        # Restore dropped coefficients
         if self.log_a > 0:
-            activations[:, activations.sum(0) < 1e-8] = self.log_a
+            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_a
 
-        if np.allclose(activations, 0):
-            warn("All activations dropped to 0", UserWarning)
-            activations.fill(1)
+        if np.allclose(coefficients, 0):
+            warn("All coefficients dropped to 0", UserWarning)
+            coefficients.fill(1)
 
-        return activations
+        return coefficients
 
     def _update_weights(
         self,
@@ -246,7 +246,7 @@ class GraphDictionary(GraphDictBase):
         n_samples = sq_pdiffs.shape[0]
 
         # Smoothness
-        step = self.activations_ @ sq_pdiffs
+        step = self.coefficients_ @ sq_pdiffs
         step += self.l1_w
 
         if self.ortho_w > 0:
@@ -285,7 +285,7 @@ class GraphDictionary(GraphDictBase):
         return dual, eigvals
 
     def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> tuple[float, float]:
-        # combi_p = combinations_prob(self.activations_, self._combinations)
+        # combi_p = combinations_prob(self.coefficients_, self._combinations)
 
         # primal update
         # x1 = prox_gx(x - step * (op_adjx(x, dualv) + gradf_x(x, y, gz)), step)
@@ -299,15 +299,15 @@ class GraphDictionary(GraphDictBase):
                 combi_p=self.combi_p_,
                 neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
             )
-            activations = self._combinations @ combi_p
+            coefficients = self._combinations @ combi_p
         else:
-            activations = self._update_activations(
+            coefficients = self._update_coefficients(
                 sq_pdiffs,
-                self.activations_,
+                self.coefficients_,
                 combi_p=self.combi_p_,
                 neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
             )
-            combi_p = combinations_prob(activations, self._combinations)
+            combi_p = combinations_prob(coefficients, self._combinations)
 
         weights = self._update_weights(
             sq_pdiffs,
@@ -322,25 +322,25 @@ class GraphDictionary(GraphDictBase):
             dual=self.dual_,
         )
 
-        a_rel_change = relative_error(self.activations_.ravel(), activations.ravel())
+        a_rel_change = relative_error(self.coefficients_.ravel(), coefficients.ravel())
         w_rel_change = relative_error(self.weights_.ravel(), weights.ravel())
 
         self.combi_p_ = combi_p
-        self.activations_ = activations
+        self.coefficients_ = coefficients
         self.weights_ = weights
 
         return a_rel_change, w_rel_change
 
     def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
-        """Predict activations for a given signal"""
+        """Predict coefficients for a given signal"""
         _n_samples, n_nodes = x.shape
         if n_nodes != self.n_nodes_:
             raise ValueError(f"Number of nodes mismatch, got {n_nodes} instead of {self.n_nodes_}")
 
         sq_pdiffs = squared_pdiffs(x)
 
-        activations = self._init_activations(x.shape[0])
-        combi_p = combinations_prob(activations)
+        coefficients = self._init_coefficients(x.shape[0])
+        combi_p = combinations_prob(coefficients)
 
         for _ in range(self.max_iter):
             combi_e = combi_p.sum(1)
@@ -351,19 +351,19 @@ class GraphDictionary(GraphDictBase):
                     combi_p=combi_p,
                     neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
                 )
-                activations_u = self._combinations @ combi_p
+                coefficients_u = self._combinations @ combi_p
             else:
-                activations_u = self._update_activations(
+                coefficients_u = self._update_coefficients(
                     sq_pdiffs,
-                    activations,
+                    coefficients,
                     combi_p=combi_p,
                     neg_dual_eigvals=-self.dual_eigvals_ * combi_e[:, np.newaxis],
                 )
-                combi_p = combinations_prob(activations)
+                combi_p = combinations_prob(coefficients)
 
-            if np.linalg.norm((activations_u - activations).ravel()) < self.tol:
-                return activations_u
+            if np.linalg.norm((coefficients_u - coefficients).ravel()) < self.tol:
+                return coefficients_u
 
-            activations = activations_u
+            coefficients = coefficients_u
 
-        return activations
+        return coefficients
