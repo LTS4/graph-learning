@@ -33,12 +33,12 @@ class GraphDictionary(GraphDictBase):
         window_size: int = 1,
         l1_w: float = 0,
         ortho_w: float = 0,
-        l1_a: float = 0,
-        log_a: float = 0,
-        l1_diff_a: float = 0,
+        l1_c: float = 0,
+        log_c: float = 0,
+        l1_diff_c: float = 0,
         max_iter: int = 1000,
         step: float = 1,
-        step_a: float = None,
+        step_c: float = None,
         step_w: float = None,
         step_dual: float = None,
         tol: float = 0.001,
@@ -55,12 +55,12 @@ class GraphDictionary(GraphDictBase):
             window_size=window_size,
             l1_w=l1_w,
             ortho_w=ortho_w,
-            l1_a=l1_a,
-            log_a=log_a,
-            l1_diff_a=l1_diff_a,
+            l1_c=l1_c,
+            log_c=log_c,
+            l1_diff_c=l1_diff_c,
             max_iter=max_iter,
             step=step,
-            step_a=step_a,
+            step_c=step_c,
             step_w=step_w,
             step_dual=step_dual,
             tol=tol,
@@ -106,7 +106,7 @@ class GraphDictionary(GraphDictBase):
         # FIXME: now the steps are on a similar scale, but I don't know why, nor if it is correct
 
         n_samples = sq_pdiffs.shape[0]
-        step_size = self.step_a / n_samples
+        step_size = self.step_c / n_samples
 
         inst_weights = self._combinations[:, 1:].T @ self.weights_
         step = np.zeros_like(combi_p)
@@ -160,7 +160,7 @@ class GraphDictionary(GraphDictBase):
             NDArray[np.float_]: Updated coefficients of shape (n_atoms, n_samples)
         """
         n_samples = sq_pdiffs.shape[0]
-        step_size = self.step_a / n_samples
+        step_size = self.step_c / n_samples
 
         # Smoothness
         step = self.weights_ @ sq_pdiffs.T
@@ -174,10 +174,10 @@ class GraphDictionary(GraphDictBase):
             )
 
         # L1 regularization
-        step += self.l1_a
+        step += self.l1_c
 
-        if self.l1_diff_a > 0:
-            step -= self.l1_diff_a * (
+        if self.l1_diff_c > 0:
+            step -= self.l1_diff_c * (
                 np.diff(np.sign(np.diff(coefficients, axis=1)), axis=1, prepend=0, append=0)
             )
 
@@ -214,8 +214,8 @@ class GraphDictionary(GraphDictBase):
         coefficients[coefficients > 1] = 1
 
         # Restore dropped coefficients
-        if self.log_a > 0:
-            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_a
+        if self.log_c > 0:
+            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_c
 
         if np.allclose(coefficients, 0):
             warn("All coefficients dropped to 0", UserWarning)
