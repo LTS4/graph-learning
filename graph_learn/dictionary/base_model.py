@@ -38,19 +38,19 @@ class GraphDictBase(ABC, BaseEstimator):
         window_size: int = 1,
         l1_w: float = 0,
         ortho_w: float = 0,
-        l1_a: float = 0,
-        log_a: float = 0,
-        l1_diff_a: float = 0,
+        l1_c: float = 0,
+        log_c: float = 0,
+        l1_diff_c: float = 0,
         max_iter: int = 1000,
         step: float = 1,
-        step_a: float = None,
+        step_c: float = None,
         step_w: float = None,
         step_dual: float = None,
         tol: float = 1e-3,
         reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
-        init_strategy_a: str = None,
+        init_strategy_c: str = None,
         init_strategy_w: str = None,
         n_init: int = 1,
         weight_prior: float | NDArray[np.float_] = None,
@@ -64,14 +64,14 @@ class GraphDictBase(ABC, BaseEstimator):
         self.window_size = window_size
         self.ortho_w = ortho_w
         self.l1_w = l1_w
-        self.l1_a = l1_a
-        self.log_a = log_a
-        self.l1_diff_a = l1_diff_a
+        self.l1_c = l1_c
+        self.log_c = log_c
+        self.l1_diff_c = l1_diff_c
 
         self.max_iter = max_iter
 
         self.step = step
-        self.step_a = step_a or step
+        self.step_c = step_c or step
         self.step_w = step_w or step
         self.step_dual = step_dual or step
 
@@ -83,7 +83,7 @@ class GraphDictBase(ABC, BaseEstimator):
         else:
             self.random_state = RandomState(random_state)
 
-        self.init_strategy_a = init_strategy_a or init_strategy
+        self.init_strategy_c = init_strategy_c or init_strategy
         self.init_strategy_w = init_strategy_w or init_strategy
         self.n_init = n_init
         self.weight_prior = weight_prior
@@ -106,7 +106,7 @@ class GraphDictBase(ABC, BaseEstimator):
         n_samples = x.shape[0]
         coefficients = np.ones((self.n_atoms, n_samples // self.window_size))
 
-        match self.init_strategy_a:
+        match self.init_strategy_c:
             case "uniform":
                 if not isinstance(self.coefficient_prior, (list, np.ndarray)):
                     coefficients = self.random_state.uniform(size=(self.n_atoms, n_samples))
@@ -152,7 +152,7 @@ class GraphDictBase(ABC, BaseEstimator):
                 coefficients[np.argmax(corr_abs, axis=1), np.arange(n_samples)] = 1
 
             case _:
-                raise ValueError(f"Invalid init_strategy for coefficients: {self.init_strategy_a}")
+                raise ValueError(f"Invalid init_strategy for coefficients: {self.init_strategy_c}")
 
         coefficients[coefficients < 0] = 0
         coefficients[coefficients > 1] = 1
@@ -286,15 +286,15 @@ class GraphDictBase(ABC, BaseEstimator):
             step = step.reshape(self.n_atoms, -1, self.window_size).mean(2)
 
         # L1 regularization
-        step += self.l1_a * n_samples
+        step += self.l1_c * n_samples
 
-        if self.log_a > 0:
-            # step -= self.log_a / coefficients.sum(axis=0, keepdims=True)
-            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_a
+        if self.log_c > 0:
+            # step -= self.log_c / coefficients.sum(axis=0, keepdims=True)
+            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_c
 
-        if self.l1_diff_a > 0:
+        if self.l1_diff_c > 0:
             step -= (
-                self.l1_diff_a
+                self.l1_diff_c
                 * n_samples
                 * (np.diff(np.sign(np.diff(coefficients, axis=1)), axis=1, prepend=0, append=0))
             )
@@ -303,7 +303,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         # Proximal and gradient step
         # NOTE: the step might be divided by the operator norm
-        coefficients = coefficients - self.step_a / n_samples * (dual_step + step)
+        coefficients = coefficients - self.step_c / n_samples * (dual_step + step)
 
         # Projection
         coefficients[coefficients < 0] = 0
@@ -311,7 +311,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         if np.allclose(coefficients, 0):
             warn("All coefficients dropped to 0", UserWarning)
-            coefficients.fill(self.log_a)
+            coefficients.fill(self.log_c)
 
         return coefficients
 
@@ -441,7 +441,7 @@ class GraphDictBase(ABC, BaseEstimator):
                     )
                 ):
                     warn(f"Divergence detected at step {i}, reducing step size", UserWarning)
-                    self.step_a *= 0.7
+                    self.step_c *= 0.7
                     self.step_w *= 0.7
                     self.step_dual *= 0.7
 
@@ -588,12 +588,12 @@ class GraphDictBase(ABC, BaseEstimator):
                 np.sum(self.weights_.T @ self.weights_) - np.linalg.norm(self.weights_) ** 2
             )
 
-        coefficient_loss = self.l1_a * np.abs(self.coefficients_).sum()
-        if self.log_a > 0:
-            coefficient_loss -= self.log_a * np.sum(np.log(self.coefficients_.sum(0)))
-        if self.l1_diff_a > 0:
+        coefficient_loss = self.l1_c * np.abs(self.coefficients_).sum()
+        if self.log_c > 0:
+            coefficient_loss -= self.log_c * np.sum(np.log(self.coefficients_.sum(0)))
+        if self.l1_diff_c > 0:
             warn("Check diff loss", UserWarning)
-            coefficient_loss -= self.l1_diff_a * np.linalg.norm(
+            coefficient_loss -= self.l1_diff_c * np.linalg.norm(
                 np.diff(np.sign(np.diff(self.coefficients_, axis=1)), axis=1, prepend=0, append=0)
             )
 
