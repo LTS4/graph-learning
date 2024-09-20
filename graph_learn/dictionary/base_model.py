@@ -79,7 +79,8 @@ class GraphDictBase(ABC, BaseEstimator):
             Defaults to False, in which case KeiboardInterrupt is raised.
 
     Attributes:
-        coefficients_ (NDArray[np.float64]): Coefficients of the model of shape (n_atoms, n_samples).
+        coefficients_ (NDArray[np.float64]): Coefficients of the model of shape
+            (n_atoms, n_samples).
         weights_ (NDArray[np.float64]): Weights of the model of shape (n_atoms, n_edges).
         dual_ (NDArray[np.float64]): Dual variable of the model of shape
             (n_samples, n_nodes, n_nodes).
