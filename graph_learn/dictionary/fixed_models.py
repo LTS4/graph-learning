@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from . import GraphDictExact
+from graph_learn.dictionary.exact_model import GraphDictExact
 
 
 class FixedWeights(GraphDictExact):
