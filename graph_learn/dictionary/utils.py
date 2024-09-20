@@ -6,8 +6,8 @@ from numpy.typing import NDArray
 
 
 def mc_coefficients(
-    coefficients: NDArray[np.float_], mc_samples: int, random_state: RandomState
-) -> NDArray[np.float_]:
+    coefficients: NDArray[np.float64], mc_samples: int, random_state: RandomState
+) -> NDArray[np.float64]:
     """Sample combinations of coefficients using Monte-Carlo"""
     n_atoms, n_samples = coefficients.shape
     combination_map = 2 ** np.arange(n_atoms)
@@ -22,14 +22,14 @@ def mc_coefficients(
     return out / mc_samples
 
 
-def powerset_matrix(n_atoms: int) -> NDArray[np.int_]:
+def powerset_matrix(n_atoms: int) -> NDArray[np.int64]:
     """Return matrix of all combinations of n_atoms binary variables
 
     Args:
         n_atoms (int): Number of components
 
     Returns:
-        NDArray[np.int_]: Combination matrix of shape (n_atoms, 2**n_atoms)
+        NDArray[np.int64]: Combination matrix of shape (n_atoms, 2**n_atoms)
     """
     return np.array(
         [[(j >> i) & 1 for j in range(2**n_atoms)] for i in range(n_atoms)]
@@ -37,8 +37,8 @@ def powerset_matrix(n_atoms: int) -> NDArray[np.int_]:
 
 
 def combinations_prob(
-    coefficients: NDArray[np.float_], pwset_mat: NDArray[np.int_] = None
-) -> NDArray[np.float_]:
+    coefficients: NDArray[np.float64], pwset_mat: NDArray[np.int64] = None
+) -> NDArray[np.float64]:
     """Compute exact probability of each combination of coefficients"""
     if pwset_mat is None:
         pwset_mat = powerset_matrix(coefficients.shape[0])

@@ -53,9 +53,9 @@ class FixedWeights(GraphDictExact):
 
     # def _update_dual(
     #     self,
-    #     weights: NDArray[np.float_],
-    #     combi_p: NDArray[np.float_],
-    #     dual: NDArray[np.float_],
+    #     weights: NDArray[np.float64],
+    #     combi_p: NDArray[np.float64],
+    #     dual: NDArray[np.float64],
     #     op_norm=1,
     # ):
     #     # return prox_gdet_star(dual, sigma=self.step_dual / op_norm / self.n_samples_)
@@ -97,7 +97,7 @@ class FixedCoefficients(GraphDictExact):
     Only weights are optimized.
     """
 
-    def _init_coefficients(self, x) -> NDArray[np.float_]:
+    def _init_coefficients(self, x) -> NDArray[np.float64]:
         expected_shape = (self.n_atoms, x.shape[0])
 
         if isinstance(self.coefficient_prior, (np.ndarray, list)):
@@ -120,7 +120,7 @@ class FixedCoefficients(GraphDictExact):
 
         return coefficients
 
-    # def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float_]:
+    # def _update_combi_p(self, *_args, **_kwargs) -> NDArray[np.float64]:
     #     return self.combi_p_
 
     def _update_coefficients(
@@ -128,7 +128,7 @@ class FixedCoefficients(GraphDictExact):
     ) -> NDArray:
         return coefficients
 
-    def predict(self, x) -> NDArray[np.float_]:
+    def predict(self, x) -> NDArray[np.float64]:
         raise NotImplementedError
 
 

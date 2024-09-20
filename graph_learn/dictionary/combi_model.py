@@ -45,8 +45,8 @@ class GraphDictionary(GraphDictBase):
         random_state: RandomState = None,
         init_strategy: str = "uniform",
         n_init: int = 1,
-        weight_prior: float | NDArray[np.float_] = None,
-        coefficient_prior: float | NDArray[np.float_] = None,
+        weight_prior: float | NDArray[np.float64] = None,
+        coefficient_prior: float | NDArray[np.float64] = None,
         combination_update: bool = False,
     ) -> None:
         super().__init__(
@@ -74,8 +74,8 @@ class GraphDictionary(GraphDictBase):
         self._combinations = powerset_matrix(n_atoms=self.n_atoms)  # shape (n_atoms, 2**n_atoms)
         self.combination_update = combination_update
 
-        self.combi_p_: NDArray[np.float_]
-        self.dual_eigvals_: NDArray[np.float_]
+        self.combi_p_: NDArray[np.float64]
+        self.dual_eigvals_: NDArray[np.float64]
 
         if window_size > 1:
             raise NotImplementedError()
@@ -99,7 +99,7 @@ class GraphDictionary(GraphDictBase):
         sq_pdiffs: NDArray,
         combi_p: NDArray,
         neg_dual_eigvals: NDArray,
-    ) -> NDArray[np.float_]:
+    ) -> NDArray[np.float64]:
         # we do not work with the empty component
         # FIXME: now the steps are on a similar scale, but I don't know why, nor if it is correct
 
@@ -138,24 +138,24 @@ class GraphDictionary(GraphDictBase):
 
     def _update_coefficients(
         self,
-        sq_pdiffs: NDArray[np.float_],
-        coefficients: NDArray[np.float_],
-        combi_p: NDArray[np.float_],
-        neg_dual_eigvals: NDArray[np.float_],
-    ) -> NDArray[np.float_]:
+        sq_pdiffs: NDArray[np.float64],
+        coefficients: NDArray[np.float64],
+        combi_p: NDArray[np.float64],
+        neg_dual_eigvals: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
         # pylint: disable=arguments-renamed
         """Update coefficients
 
         Args:
-            x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
-            coefficients (NDArray[np.float_]): Current coefficients of shape (n_atoms, n_samples)
-            combi_p (NDArray[np.float_]): Probabilities of combinations for each sample.
+            x (NDArray[np.float64]): Signal matrix of shape (n_samples, n_nodes)
+            coefficients (NDArray[np.float64]): Current coefficients of shape (n_atoms, n_samples)
+            combi_p (NDArray[np.float64]): Probabilities of combinations for each sample.
                 Array of shape (2**n_atoms, n_samples)
-            dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
+            dual (NDArray[np.float64]): Dual variable (instantaneous Laplacians)
                 of shape (2**n_atoms, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Updated coefficients of shape (n_atoms, n_samples)
+            NDArray[np.float64]: Updated coefficients of shape (n_atoms, n_samples)
         """
         n_samples = sq_pdiffs.shape[0]
         step_size = self.step_c / n_samples
@@ -223,23 +223,23 @@ class GraphDictionary(GraphDictBase):
 
     def _update_weights(
         self,
-        sq_pdiffs: NDArray[np.float_],
-        weights: NDArray[np.float_],
-        combi_p: NDArray[np.float_],
-        dual: NDArray[np.float_],
-    ) -> NDArray[np.float_]:
+        sq_pdiffs: NDArray[np.float64],
+        weights: NDArray[np.float64],
+        combi_p: NDArray[np.float64],
+        dual: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
         # pylint: disable=arguments-renamed
         """Update the weights of the model
 
         Args:
-            x (NDArray[np.float_]): Signal matrix of shape (n_samples, n_nodes)
-            combi_p (NDArray[np.float_]): Monte-Carlo probabilities of combinations
+            x (NDArray[np.float64]): Signal matrix of shape (n_samples, n_nodes)
+            combi_p (NDArray[np.float64]): Monte-Carlo probabilities of combinations
                 for each sample. Array of shape (2**n_atoms, n_samples)
-            dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
+            dual (NDArray[np.float64]): Dual variable (instantaneous Laplacians)
                 of shape (2**n_atoms, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
+            NDArray[np.float64]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
         n_samples = sq_pdiffs.shape[0]
 
@@ -262,9 +262,9 @@ class GraphDictionary(GraphDictBase):
 
     def _update_dual(
         self,
-        weights: NDArray[np.float_],
-        combi_p: NDArray[np.float_],
-        dual: NDArray[np.float_],
+        weights: NDArray[np.float64],
+        combi_p: NDArray[np.float64],
+        dual: NDArray[np.float64],
     ) -> tuple[NDArray, NDArray]:
         """This is supposed to be the specific method"""
         # pylint: disable=arguments-renamed
@@ -282,7 +282,7 @@ class GraphDictionary(GraphDictBase):
 
         return dual, eigvals
 
-    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> tuple[float, float]:
+    def _fit_step(self, sq_pdiffs: NDArray[np.float64]) -> tuple[float, float]:
         # combi_p = combinations_prob(self.coefficients_, self._combinations)
 
         # primal update
@@ -329,7 +329,7 @@ class GraphDictionary(GraphDictBase):
 
         return a_rel_change, w_rel_change
 
-    def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def predict(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         """Predict coefficients for a given signal"""
         _n_samples, n_nodes = x.shape
         if n_nodes != self.n_nodes_:
