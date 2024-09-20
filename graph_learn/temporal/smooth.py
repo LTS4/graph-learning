@@ -4,10 +4,9 @@ from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
-from sklearn.base import BaseEstimator
 
 from graph_learn.operators import square_to_vec
-from graph_learn.smooth_learning import LogModel, get_theta, gsp_learn_graph_log_degrees
+from graph_learn.smooth_learning import LogModel, get_theta
 
 
 class WindowLogModel(LogModel):
@@ -34,6 +33,7 @@ class WindowLogModel(LogModel):
             edge_tol=edge_tol,
         )
         self.window_size = window_size
+        self.random_state = random_state  # Unused argument, for compatibility
 
         self.theta_: NDArray[np.float64]
         self.weights_: NDArray[np.float64]
@@ -59,19 +59,3 @@ class WindowLogModel(LogModel):
             self.theta_ = np.array([[get_theta(sqpd, self.avg_degree)] for sqpd in sq_pdists])
 
         return square_to_vec(sq_pdists)
-
-    def fit(self, x: NDArray[np.float64]):
-        sq_pdists = self._initialize(x)
-
-        self.weights_ = gsp_learn_graph_log_degrees(
-            sq_pdists * self.theta_,
-            1,
-            1,
-            edge_init=self.edge_init,
-            maxit=self.maxit,
-            tol=self.tol,
-            step_size=self.step_size,
-            edge_tol=self.edge_tol,
-        )
-
-        return self
