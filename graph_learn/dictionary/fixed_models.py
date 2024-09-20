@@ -4,7 +4,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from . import GraphDictExact
-from .utils import powerset_matrix
 
 
 class FixedWeights(GraphDictExact):
@@ -20,7 +19,7 @@ class FixedWeights(GraphDictExact):
         self._eigvals: NDArray
         self._combi_lapl: NDArray
 
-    def _init_weigths(self, x: NDArray) -> NDArray:
+    def _init_weigths(self, x: NDArray) -> NDArray[np.float64]:
         n_nodes = x.shape[1]
         expected_shape = (self.n_atoms, n_nodes * (n_nodes - 1) // 2)
 
@@ -170,6 +169,14 @@ def fixw_from_full(model: GraphDictExact) -> FixedWeights:
 
 
 class GraphDictHier(FixedCoefficients):
+    """Implementation of the Hierarchical graph learning model from Yamada and Tanaka 2021
+    as a subclass of the Graph Dictionary Model, with fixed coefficients.
+
+    Args:
+        depth (int): Depth of the hierarchical model.
+            It enforces :attr:`n_atoms` to be `2**depth - 1`.
+    """
+
     def __init__(self, depth: int, **kwargs) -> None:
         super().__init__(
             n_atoms=2 ** (depth) - 1,
