@@ -1,4 +1,5 @@
 """Module for learning graphs from smooth signals"""
+
 from typing import Optional, Tuple
 
 import numpy as np
@@ -218,7 +219,7 @@ class LogModel(BaseEstimator):
     Uses the optimal parameters from Kalofolias 2019.
 
     Parameters:
-        avg_degree (float, optional): Desired average degree. Defaults to None.
+        avg_degree (int, optional): Desired average number of neighbours for node. Defaults to None.
         edge_init (Optional[NDArray[np.float64]], optional): Prior on graph
             weights. Defaults to None.
         maxit (int, optional): Max optimizaiton iterations. Defaults to 1000.
@@ -234,6 +235,7 @@ class LogModel(BaseEstimator):
     def __init__(
         self,
         avg_degree: float = None,
+        *,
         edge_init: Optional[NDArray[np.float64]] = None,
         maxit: int = 1000,
         tol: float = 1e-5,
@@ -250,15 +252,17 @@ class LogModel(BaseEstimator):
         self.theta_: float
         self.weights_: NDArray[np.float64]
 
-    def _initialize(self, sq_pdists):
+    def _initialize(self, x) -> NDArray[np.float64]:
+        sq_pdists = pdist(x.T) ** 2
         if self.avg_degree is None:
             self.theta_ = 1
         else:
-            self.theta_ = get_theta(sq_pdists, self.avg_degree)
+            self.theta_ = get_theta(squareform(sq_pdists), self.avg_degree)
+
+        return sq_pdists
 
     def fit(self, x: NDArray[np.float64]):
-        sq_pdists = squareform(pdist(x.T) ** 2)
-        self._initialize(sq_pdists)
+        sq_pdists = self._initialize(x)
 
         self.weights_ = gsp_learn_graph_log_degrees(
             sq_pdists * self.theta_,
