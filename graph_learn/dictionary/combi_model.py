@@ -23,7 +23,7 @@ from .base_model import GraphDictBase
 from .utils import combinations_prob, powerset_matrix
 
 
-class GraphDictionary(GraphDictBase):
+class GraphDictCombi(GraphDictBase):
     """Graph components learning original method"""
 
     def __init__(
