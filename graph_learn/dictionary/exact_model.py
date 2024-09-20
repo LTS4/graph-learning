@@ -26,9 +26,9 @@ class GraphDictExact(GraphDictBase):
 
     def _update_dual(
         self,
-        weights: NDArray[np.float_],
-        coefficients: NDArray[np.float_],
-        dual: NDArray[np.float_],
+        weights: NDArray[np.float64],
+        coefficients: NDArray[np.float64],
+        dual: NDArray[np.float64],
     ) -> NDArray:
         # z1 = dualv + step * bilinear_op(x_overshoot, y_overshoot)
         # z1 -= step * prox_h(z1 / step, 1 / step)

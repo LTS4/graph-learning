@@ -79,9 +79,9 @@ class GraphDictBase(ABC, BaseEstimator):
             Defaults to False, in which case KeiboardInterrupt is raised.
 
     Attributes:
-        coefficients_ (NDArray[np.float_]): Coefficients of the model of shape (n_atoms, n_samples).
-        weights_ (NDArray[np.float_]): Weights of the model of shape (n_atoms, n_edges).
-        dual_ (NDArray[np.float_]): Dual variable of the model of shape
+        coefficients_ (NDArray[np.float64]): Coefficients of the model of shape (n_atoms, n_samples).
+        weights_ (NDArray[np.float64]): Weights of the model of shape (n_atoms, n_edges).
+        dual_ (NDArray[np.float64]): Dual variable of the model of shape
             (n_samples, n_nodes, n_nodes).
         n_nodes_ (int): Number of nodes in the graph.
         converged_ (int): Number of iterations before convergence.
@@ -114,8 +114,8 @@ class GraphDictBase(ABC, BaseEstimator):
         init_strategy_c: str = None,
         init_strategy_w: str = None,
         n_init: int = 1,
-        weight_prior: float | NDArray[np.float_] = None,
-        coefficient_prior: float | NDArray[np.float_] = None,
+        weight_prior: float | NDArray[np.float64] = None,
+        coefficient_prior: float | NDArray[np.float64] = None,
         early_stop_keyboard: bool = False,
     ) -> None:
         super().__init__()
@@ -151,17 +151,17 @@ class GraphDictBase(ABC, BaseEstimator):
 
         self.early_stop_keyboard = early_stop_keyboard
 
-        self._sq_pdiffs: NDArray[np.float_]  # shape (n_atoms, n_edges )
+        self._sq_pdiffs: NDArray[np.float64]  # shape (n_atoms, n_edges )
 
-        self.coefficients_: NDArray[np.float_]  # shape (n_atoms, n_samples)
-        self.weights_: NDArray[np.float_]  # shape (n_atoms, n_edges )
-        self.dual_: NDArray[np.float_]  # shape (n_samples, n_nodes, n_nodes)
+        self.coefficients_: NDArray[np.float64]  # shape (n_atoms, n_samples)
+        self.weights_: NDArray[np.float64]  # shape (n_atoms, n_edges )
+        self.dual_: NDArray[np.float64]  # shape (n_samples, n_nodes, n_nodes)
         self.n_nodes_: int
         self.converged_: int
         self.history_: pd.DataFrame
         self.fit_time_: float
 
-    def _init_coefficients(self, x: NDArray) -> NDArray[np.float_]:
+    def _init_coefficients(self, x: NDArray) -> NDArray[np.float64]:
         """Initialize coefficients based on :attr:`init_strategy_c`
 
         Args:
@@ -171,7 +171,7 @@ class GraphDictBase(ABC, BaseEstimator):
             ValueError: Invalid init_strategy for coefficients
 
         Returns:
-            NDArray[np.float_]: Initialized coefficients of shape (n_atoms, n_samples)
+            NDArray[np.float64]: Initialized coefficients of shape (n_atoms, n_samples)
         """
         n_samples = x.shape[0]
         coefficients = np.ones((self.n_atoms, n_samples // self.window_size))
@@ -231,7 +231,7 @@ class GraphDictBase(ABC, BaseEstimator):
             coefficients = np.repeat(coefficients, self.window_size, axis=1)[:, :n_samples]
         return coefficients
 
-    def _init_weigths(self, x: NDArray = None) -> NDArray[np.float_]:
+    def _init_weigths(self, x: NDArray = None) -> NDArray[np.float64]:
         """Initialize weights based on :attr:`init_strategy_w`
 
         Args:
@@ -241,7 +241,7 @@ class GraphDictBase(ABC, BaseEstimator):
             ValueError: Invalid init_strategy for weights
 
         Returns:
-            NDArray[np.float_]: Initialized weights of shape (n_atoms, n_edges)
+            NDArray[np.float64]: Initialized weights of shape (n_atoms, n_edges)
         """
         n_samples, n_nodes = x.shape
         weights = np.ones((self.n_atoms, (n_nodes**2 - n_nodes) // 2))
@@ -349,21 +349,21 @@ class GraphDictBase(ABC, BaseEstimator):
 
     def _update_coefficients(
         self,
-        sq_pdiffs: NDArray[np.float_],
-        coefficients: NDArray[np.float_],
-        dual: NDArray[np.float_],
-    ) -> NDArray[np.float_]:
+        sq_pdiffs: NDArray[np.float64],
+        coefficients: NDArray[np.float64],
+        dual: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
         """Update coefficients
 
         Args:
-            sq_pdiffs (NDArray[np.float_]): Squared pairwise differences of
+            sq_pdiffs (NDArray[np.float64]): Squared pairwise differences of
                 shape (n_samples, n_edges)
-            coefficients (NDArray[np.float_]): Current coefficients of shape (n_atoms, n_samples)
-            dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
+            coefficients (NDArray[np.float64]): Current coefficients of shape (n_atoms, n_samples)
+            dual (NDArray[np.float64]): Dual variable (instantaneous Laplacians)
                 of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Updated coefficients of shape (n_atoms, n_samples)
+            NDArray[np.float64]: Updated coefficients of shape (n_atoms, n_samples)
         """
 
         n_samples = sq_pdiffs.shape[0]
@@ -421,21 +421,21 @@ class GraphDictBase(ABC, BaseEstimator):
 
     def _update_weights(
         self,
-        sq_pdiffs: NDArray[np.float_],
-        weights: NDArray[np.float_],
-        dual: NDArray[np.float_],
-    ) -> NDArray[np.float_]:
+        sq_pdiffs: NDArray[np.float64],
+        weights: NDArray[np.float64],
+        dual: NDArray[np.float64],
+    ) -> NDArray[np.float64]:
         """Update the weights of the model
 
         Args:
-            sq_pdiffs (NDArray[np.float_]): Squared pairwise differences of
+            sq_pdiffs (NDArray[np.float64]): Squared pairwise differences of
                 shape (n_samples, n_edges)
-            weights (NDArray[np.float_]): Current weights of shape (n_atoms, n_edges)
-            dual (NDArray[np.float_]): Dual variable (instantaneous Laplacians)
+            weights (NDArray[np.float64]): Current weights of shape (n_atoms, n_edges)
+            dual (NDArray[np.float64]): Dual variable (instantaneous Laplacians)
                 of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
+            NDArray[np.float64]: updated weights of shape (n_atoms, (n_nodes**2 - n_nodes) // 2)
         """
         n_samples = sq_pdiffs.shape[0]
 
@@ -460,28 +460,28 @@ class GraphDictBase(ABC, BaseEstimator):
     @abstractmethod
     def _update_dual(
         self,
-        weights: NDArray[np.float_],
-        coefficients: NDArray[np.float_],
-        dual: NDArray[np.float_],
+        weights: NDArray[np.float64],
+        coefficients: NDArray[np.float64],
+        dual: NDArray[np.float64],
     ):
         """Update the dual variable
 
         Args:
-            weights (NDArray[np.float_]): Weights of shape (n_atoms, n_edges)
-            coefficients (NDArray[np.float_]): Coefficients of shape (n_atoms, n_samples)
-            dual (NDArray[np.float_]): Dual variable of shape (n_samples, n_nodes, n_nodes)
+            weights (NDArray[np.float64]): Weights of shape (n_atoms, n_edges)
+            coefficients (NDArray[np.float64]): Coefficients of shape (n_atoms, n_samples)
+            dual (NDArray[np.float64]): Dual variable of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
-            NDArray[np.float_]: Updated dual variable of shape (n_samples, n_nodes, n_nodes)
+            NDArray[np.float64]: Updated dual variable of shape (n_samples, n_nodes, n_nodes)
         """
 
         raise NotImplementedError
 
-    def _fit_step(self, sq_pdiffs: NDArray[np.float_]) -> tuple[float, float]:
+    def _fit_step(self, sq_pdiffs: NDArray[np.float64]) -> tuple[float, float]:
         """Single step of PDS optimization
 
         Args:
-            sq_pdiffs (NDArray[np.float_]): Squared pairwise differences of
+            sq_pdiffs (NDArray[np.float64]): Squared pairwise differences of
                 shape (n_samples, n_edges)
 
         Returns:
@@ -523,7 +523,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
     def _single_fit(
         self,
-        x: NDArray[np.float_],
+        x: NDArray[np.float64],
         _y=None,
         *,
         callback: Callable[[GraphDictBase, int]] = None,
@@ -531,7 +531,7 @@ class GraphDictBase(ABC, BaseEstimator):
         """Fit the model to the data with a single initialization
 
         Args:
-            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+            x (NDArray[np.float64]): Design matrix of shape (n_samples, n_nodes)
             y (None, optional): Ignored. Defaults to None.
             callback (Callable[[GraphDictBase, int]], optional): Callback function
                 called at each iteration. Defaults to None.
@@ -582,12 +582,12 @@ class GraphDictBase(ABC, BaseEstimator):
         return self
 
     def fit(
-        self, x: NDArray[np.float_], _y=None, *, callback: Callable[[GraphDictBase, int]] = None
+        self, x: NDArray[np.float64], _y=None, *, callback: Callable[[GraphDictBase, int]] = None
     ):
         """Fit the model to the data, possibly on multiple initializations
 
         Args:
-            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+            x (NDArray[np.float64]): Design matrix of shape (n_samples, n_nodes)
             y (None, optional): Ignored. Defaults to None.
             callback (Callable[[GraphDictBase, int]], optional): Callback function
                 called at each iteration. Defaults to None.
@@ -640,7 +640,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
     # PREDICT ######################################################################################
 
-    def predict(self, x: NDArray[np.float_]) -> NDArray[np.float_]:
+    def predict(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         """Predict coefficients for a given signal"""
         n_samples, n_nodes = x.shape
         if n_nodes != self.n_nodes_:
@@ -677,11 +677,11 @@ class GraphDictBase(ABC, BaseEstimator):
 
     # SCORING ######################################################################################
 
-    def score(self, x: NDArray[np.float_], _y=None) -> float:
+    def score(self, x: NDArray[np.float64], _y=None) -> float:
         """Compute the negative log-likelihood of the model
 
         Args:
-            x (NDArray[np.float_]): Design matrix of shape (n_samples, n_nodes)
+            x (NDArray[np.float64]): Design matrix of shape (n_samples, n_nodes)
             y (None, optional): Ignored. Defaults to None.
 
         Returns:

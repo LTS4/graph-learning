@@ -99,5 +99,5 @@ class GraphDictSpectral(GraphDictExact):
         step = coefficients.T @ weights
         return prox_gdet_star_spectral_update(sigma=sigma, eigvals=dual + sigma * step)
 
-    def score(self, x: NDArray[np.float_], _y=None) -> float:
+    def score(self, x: NDArray[np.float64], _y=None) -> float:
         return np.nan
