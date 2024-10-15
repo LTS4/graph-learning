@@ -40,12 +40,20 @@ Part of the code is ported to Python from the Matlab implementation from https:/
 
 > H. Araghi, M. Sabbaqi, and M. Babaie–Zadeh, “$K$-Graphs: An Algorithm for Graph Signal Clustering and Multiple Graph Learning,” IEEE Signal Processing Letters, vol. 26, no. 10, pp. 1486–1490, Oct. 2019, https://doi.org/10.1109/LSP.2019.2936665.
 
+### Temporal graph learning
+
+#### TGFA
+
+> K. Yamada, Y. Tanaka, and A. Ortega, “Time-Varying Graph Learning with Constraints on Graph Temporal Variation,” Jan. 10, 2020, https://doi.org/10.48550/arXiv.2001.03346.
+
+
+#### Temporal Multiresolution Graph Learning (GraphDictHier)
+
+> K. Yamada and Y. Tanaka, “Temporal Multiresolution Graph Learning,” IEEE Access, vol. 9, pp. 143734–143745, 2021, https://doi.org/10.1109/ACCESS.2021.3120994.
+
+
 ### Dictionary Models
 
 #### Parametric Dictionary Learning (GraphDictSpectral)
 
 > D. Thanou, D. I. Shuman, and P. Frossard, “Parametric dictionary learning for graph signals,” in 2013 IEEE Global Conference on Signal and Information Processing, Dec. 2013, pp. 487–490. https://doi.org/10.1109/GlobalSIP.2013.6736921.
-
-#### Temporal Multiresolution Graph Learning (GraphDictHier)
-
-> K. Yamada and Y. Tanaka, “Temporal Multiresolution Graph Learning,” IEEE Access, vol. 9, pp. 143734–143745, 2021, https://doi.org/10.1109/ACCESS.2021.3120994.
