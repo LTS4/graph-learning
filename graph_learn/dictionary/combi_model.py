@@ -1,4 +1,4 @@
-"""Graph components learning original method"""
+"""Graph dictionary learning original method"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from .utils import combinations_prob, powerset_matrix
 
 
 class GraphDictCombi(GraphDictBase):
-    """Graph components learning original method"""
+    """Graph dictionary learning original method"""
 
     def __init__(
         self,
@@ -100,7 +100,7 @@ class GraphDictCombi(GraphDictBase):
         combi_p: NDArray,
         neg_dual_eigvals: NDArray,
     ) -> NDArray[np.float64]:
-        # we do not work with the empty component
+        # we do not work with the empty atom
         # FIXME: now the steps are on a similar scale, but I don't know why, nor if it is correct
 
         n_samples = sq_pdiffs.shape[0]

@@ -1,4 +1,4 @@
-"""Partially fixed component models"""
+"""Partially fixed atom models"""
 
 import numpy as np
 from numpy.typing import NDArray
@@ -62,7 +62,7 @@ class FixedWeights(GraphDictExact):
 
     #     combi_e = combi_p.sum(1)
     #     active = combi_e > 0
-    #     active[0] = 0  # This ignores the empty component
+    #     active[0] = 0  # This ignores the empty atom
 
     #     _shape = dual.shape
     #     eigvals = np.nanmean(

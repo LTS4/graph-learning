@@ -1,4 +1,4 @@
-"""Graph components learning original method"""
+"""Graph dictionary learning original method"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .base_model import GraphDictBase
 
 
 class GraphDictLog(GraphDictBase):
-    """Graph components learning original method"""
+    """Graph dictionary learning original method"""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
