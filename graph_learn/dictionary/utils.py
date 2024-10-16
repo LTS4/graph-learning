@@ -26,7 +26,7 @@ def powerset_matrix(n_atoms: int) -> NDArray[np.int64]:
     """Return matrix of all combinations of n_atoms binary variables
 
     Args:
-        n_atoms (int): Number of components
+        n_atoms (int): Number of atoms
 
     Returns:
         NDArray[np.int64]: Combination matrix of shape (n_atoms, 2**n_atoms)

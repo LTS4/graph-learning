@@ -1,4 +1,4 @@
-"""Graph components learning original method"""
+"""Graph dictionary learning original method"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .base_model import GraphDictBase
 
 
 class GraphDictExact(GraphDictBase):
-    """Graph components learning original method"""
+    """Graph dictionary learning original method"""
 
     def _op_adj_coefficients(self, weights: NDArray, dualv: NDArray) -> NDArray:
         return op_adj_coefficients(weights, dualv)

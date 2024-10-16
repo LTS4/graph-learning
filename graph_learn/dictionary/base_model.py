@@ -1,4 +1,4 @@
-"""Graph components learning original method"""
+"""Graph dictionary learning original method"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from graph_learn.operators import (
 
 
 class GraphDictBase(ABC, BaseEstimator):
-    """Graph components learning original method
+    """Graph dictionary learning original method
 
     Args:
         n_atoms (int, optional): Number of atoms to learn. Defaults to 1.
@@ -340,11 +340,11 @@ class GraphDictBase(ABC, BaseEstimator):
         """Compute the adjoint of the bilinear inst-degree operator wrt coefficients
 
         Args:
-            weights (NDArray): Array of weights of shape (n_components, n_edges)
+            weights (NDArray): Array of weights of shape (n_atoms, n_edges)
             dualv (NDArray): Dual variable of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
-            NDArray: Adjoint coefficients of shape (n_components, n_samples)
+            NDArray: Adjoint coefficients of shape (n_atoms, n_samples)
         """
         raise NotImplementedError
 
@@ -412,11 +412,11 @@ class GraphDictBase(ABC, BaseEstimator):
         """Compute the adjoint of the bilinear inst-degree operator wrt weights
 
         Args:
-            coefficients (NDArray): Array of coefficients of shape (n_components, n_samples)
+            coefficients (NDArray): Array of coefficients of shape (n_atoms, n_samples)
             dualv (NDArray): Dual variable of shape (n_samples, n_nodes, n_nodes)
 
         Returns:
-            NDArray: Dual weights of shape (n_components, n_edges)
+            NDArray: Dual weights of shape (n_atoms, n_edges)
         """
         raise NotImplementedError()
 
