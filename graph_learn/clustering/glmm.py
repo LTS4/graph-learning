@@ -50,8 +50,10 @@ def _estimate_gauss_laplacian_parameters(
 
     _n_samples, n_nodes = x.shape
 
-    if laplacians is not None:
-        raise NotImplementedError()
+    if laplacians is None:
+        edge_init = None
+    else:
+        edge_init = -square_to_vec(laplacians)
 
     weights: NDArray[np.float64] = np.sum(resp, axis=0)  # shape: n_components
 
@@ -70,9 +72,7 @@ def _estimate_gauss_laplacian_parameters(
         theta_inv = 1 / theta
 
     edge_weights = delta * gsp_learn_graph_log_degrees(
-        square_to_vec(sq_dist) * theta_inv,
-        alpha=1,
-        beta=1,
+        square_to_vec(sq_dist) * theta_inv, alpha=1, beta=1, edge_init=edge_init
     )
 
     laplacians = laplacian_squareform_vec(edge_weights)
