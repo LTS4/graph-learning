@@ -161,6 +161,7 @@ class KGraphsV2(KGraphs):
         n_init=1,
         init_params="kmeans",
         delta: float = 1,
+        theta: Optional[float] = None,
         random_state: RandomState | None = None,
     ) -> None:
         super().__init__(
@@ -172,6 +173,8 @@ class KGraphsV2(KGraphs):
             delta=delta,
             random_state=random_state,
         )
+
+        self.theta = theta
 
         self.means_: NDArray[np.float64]  # shape: (n_clusters, n_nodes)
 
@@ -186,7 +189,11 @@ class KGraphsV2(KGraphs):
         )
 
         _, self.means_, self.laplacians_ = _estimate_gauss_laplacian_parameters(
-            x, one_hot(self.labels_, self.n_clusters), self.delta, avg_degree=self.avg_degree
+            x,
+            one_hot(self.labels_, self.n_clusters),
+            self.delta,
+            theta=self.theta,
+            avg_degree=self.avg_degree,
         )
 
         self.converged_ = False
@@ -211,7 +218,11 @@ class KGraphsV2(KGraphs):
 
             # Compute means and Laplacians
             _, self.means_, self.laplacians_ = _estimate_gauss_laplacian_parameters(
-                x, one_hot(labels, self.n_clusters), self.delta, avg_degree=self.avg_degree
+                x,
+                one_hot(labels, self.n_clusters),
+                self.delta,
+                theta=self.theta,
+                avg_degree=self.avg_degree,
             )
 
             if np.allclose(labels, self.labels_):
