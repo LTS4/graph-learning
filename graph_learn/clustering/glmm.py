@@ -1,4 +1,5 @@
 """Implementation of Graph Laplacian Mixture Model"""
+
 # pylint: disable=arguments-renamed
 
 from typing import Optional
@@ -15,11 +16,42 @@ from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
 
 def _estimate_gauss_laplacian_parameters(
-    x: NDArray[np.float64], resp: NDArray[np.float64], avg_degree: float, delta: float
-):
+    x: NDArray[np.float64],
+    resp: NDArray[np.float64],
+    delta: float,
+    *,
+    theta: float | NDArray[np.float64] | None = None,
+    avg_degree: float | None = None,
+    laplacians: NDArray[np.float64] | None = None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Estimate the parameters of Gaussian-Laplacian Mixture model, given the associations.
+
+    Args:
+        x (NDArray[np.float64]): Design matrix, shape (n_samples, n_nodes)
+        resp (NDArray[np.float64]): Association probabilities, shape (n_samples, n_components)
+        delta (float): Scale parameters of learned graphs
+        theta (float | NDArray[np.float64] | None, optional): Scale parameter of signals, or array
+            of them. Defaults to None. Incompatible with avg_degree.
+        avg_degree (float | None, optional): Expected average degree of the graphs. Defaults to
+            None. Incompatible with theta.
+        laplacians (NDArray[np.float64] | None, optional): Priors on the Laplacians, or previous
+            estimates. Defaults to None.
+
+    Raises:
+        ValueError: In case both theta and avg_degree are provided.
+        NotImplementedError: If laplacians are provided.
+
+    Returns:
+        tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]: Weights, means and
+            Laplacians of each component.
+    """
+    if (theta is None) == (avg_degree is None):
+        raise ValueError("Exactly one of theta and avg_degree should be provided")
+
     _n_samples, n_nodes = x.shape
-    _n_samples, n_components = resp.shape
-    laplacians = np.empty((n_components, n_nodes, n_nodes))
+
+    if laplacians is not None:
+        raise NotImplementedError()
 
     weights: NDArray[np.float64] = np.sum(resp, axis=0)  # shape: n_components
 
@@ -30,9 +62,15 @@ def _estimate_gauss_laplacian_parameters(
     y = resp[:, :, np.newaxis] * (x[:, np.newaxis, :] - means[np.newaxis, ...])
     sq_dist = np.sum((y[..., np.newaxis] - y[..., np.newaxis, :]) ** 2, axis=0)
 
-    # theta = np.mean(sq_dist) / norm_par
+    # Theta should be in the order of np.mean(sq_dist)
+    if avg_degree is not None:
+        # Get Theta returns inversed thetas
+        theta_inv = [[get_theta(sqd, avg_degree)] for sqd in sq_dist]
+    else:
+        theta_inv = 1 / theta
+
     edge_weights = delta * gsp_learn_graph_log_degrees(
-        square_to_vec(sq_dist) * [[get_theta(sqd, avg_degree)] for sqd in sq_dist],
+        square_to_vec(sq_dist) * theta_inv,
         alpha=1,
         beta=1,
     )
@@ -55,10 +93,10 @@ class GLMM(BaseMixture):
         init_params (str, optional): Label initialization method. Defaults to "kmeans".
         regul (float, optional): GLMM regularization. Defaults to 0.15.
         delta (float, optional): Graph leraning param. Defaults to 2.
-        laplacian_init (Optional[float  |  str], optional): Method for laplacian initialization. Defaults to None.
-            Options are:
+        laplacian_init (Optional[float  |  str], optional): Method for laplacian initialization.
+            Defaults to None. Options are:
             - float: Initialize as fully connected with weights eaual to arg value
-            - 'random': Edge weights are sampled as uniform ranodm variables and Laplacians are extracted.
+            - 'random': Edge weights are sampled as uniform random variables.
         random_state (_type_, optional): Random state. Defaults to None.
         warm_start (bool, optional): Wheter to use warm start in EM. Defaults to False.
         verbose (int, optional): Verobsity level. Defaults to 0.
@@ -80,7 +118,7 @@ class GLMM(BaseMixture):
     def __init__(
         self,
         n_components=1,
-        avg_degree: float = 0.5,
+        avg_degree: float = 2,
         *,
         tol=1e-3,
         reg_covar=1e-6,
@@ -88,7 +126,7 @@ class GLMM(BaseMixture):
         n_init=1,
         init_params="kmeans",
         regul: float = 0.15,
-        # norm_par: float = 1.5,
+        theta: NDArray[np.float64] = None,
         delta: float = 2,
         laplacian_init: Optional[float | str] = None,
         random_state=None,
@@ -110,7 +148,7 @@ class GLMM(BaseMixture):
         )
 
         self.regul = regul
-        # self.norm_par = norm_par
+        self.theta = theta
         self.avg_degree = avg_degree
         self.delta = delta
 
@@ -129,7 +167,7 @@ class GLMM(BaseMixture):
         _n_samples, self.n_nodes_ = x.shape
 
         self.weights_, self.means_, laplacians = _estimate_gauss_laplacian_parameters(
-            x, resp, self.avg_degree, self.delta
+            x, resp, self.delta, theta=self.theta, avg_degree=self.avg_degree
         )
 
         if self.laplacian_init is None:
@@ -155,7 +193,9 @@ class GLMM(BaseMixture):
             self.weights_,
             self.means_,
             self.laplacians_,
-        ) = _estimate_gauss_laplacian_parameters(x, np.exp(log_resp), self.avg_degree, self.delta)
+        ) = _estimate_gauss_laplacian_parameters(
+            x, np.exp(log_resp), self.delta, theta=self.theta, avg_degree=self.avg_degree
+        )
         self.weights_ /= self.weights_.sum()
 
     def _estimate_log_prob(self, x: ArrayLike) -> NDArray[np.float64]:
