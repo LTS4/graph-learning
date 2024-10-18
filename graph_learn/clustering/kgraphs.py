@@ -1,4 +1,5 @@
 """Implementation of K-Graphs clustering algorithm"""
+
 # pylint: disable=arguments-renamed
 from typing import Optional
 
@@ -153,3 +154,38 @@ class KGraphs(BaseEstimator, ClusterMixin):
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         "Return softmax of smoothness"
         return softmax(-self._smoothness(x), axis=1)
+
+
+class KGraphsV2(KGraphs):
+    """Extension of KGraphs to allow for means"""
+
+    def __init__(
+        self,
+        n_clusters=1,
+        avg_degree: float = 0.5,
+        *,
+        max_iter=100,
+        n_init=1,
+        init_params="kmeans",
+        delta: float = 1,
+        random_state: RandomState | None = None,
+    ) -> None:
+        super().__init__(
+            n_clusters,
+            avg_degree,
+            max_iter=max_iter,
+            n_init=n_init,
+            init_params=init_params,
+            delta=delta,
+            random_state=random_state,
+        )
+
+        self.means_: NDArray[np.float64]
+
+    def _init_parameters(self, x: NDArray[np.float64]):
+        self.means_ = ...
+
+        return super()._init_parameters(x)
+
+    def _single_fit(self, x: NDArray[np.float64], _y=None) -> None:
+        raise NotImplementedError
