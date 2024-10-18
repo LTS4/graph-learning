@@ -45,3 +45,14 @@ def init_labels(
             return kmeans_plusplus(x, n_clusters, random_state=random_state)
         case _:
             raise ValueError(f"Invalid init_params: {init_params}")
+
+
+def one_hot(labels: NDArray[np.int_], n_labels: int = None) -> NDArray:
+    """One hot encode labels"""
+    n_samples = labels.shape[0]
+    n_labels = n_labels or labels.max() + 1
+
+    y_one_hot = np.zeros((n_samples, n_labels))
+    y_one_hot[np.arange(n_samples), labels] = 1
+
+    return y_one_hot
