@@ -33,7 +33,7 @@ def _estimate_gauss_laplacian_parameters(
         theta (float | NDArray[np.float64] | None, optional): Scale parameter of signals, or array
             of them. Defaults to None. Incompatible with avg_degree.
         avg_degree (float | None, optional): Expected average degree of the graphs. Defaults to
-            None. Incompatible with theta.
+            None. Incompatible with theta, as the latter is estimated with the :method:`get_theta`.
         laplacians (NDArray[np.float64] | None, optional): Priors on the Laplacians, or previous
             estimates. Defaults to None.
 
@@ -91,10 +91,14 @@ class GLMM(BaseMixture):
         max_iter (int, optional): Max EM iterations. Defaults to 100.
         n_init (int, optional): Number of random initializations. Defaults to 1.
         init_params (str, optional): Label initialization method. Defaults to "kmeans".
+            Accepts same values as :class:`GaussianMixture`.
         regul (float, optional): GLMM regularization. Defaults to 0.15.
-        delta (float, optional): Graph leraning param. Defaults to 2.
+        theta (float | NDArray[np.float64], optional): Alternative parameterization to
+            :arg:`avg_degree`, is thr scale parameter of signals. Defaults to None.
+        delta (float, optional): Scale parameter of learned graphs. Defaults to 2.
         laplacian_init (Optional[float  |  str], optional): Method for laplacian initialization.
             Defaults to None. Options are:
+            - None: Estimate Laplacians from first assignments estimate, given by :arg:`init_params`
             - float: Initialize as fully connected with weights eaual to arg value
             - 'random': Edge weights are sampled as uniform random variables.
         random_state (_type_, optional): Random state. Defaults to None.
