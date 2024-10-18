@@ -120,26 +120,18 @@ class KGraphs(BaseEstimator, ClusterMixin):
             self.labels_ = labels
 
     def fit_predict(self, x: NDArray[np.float64], _y=None) -> NDArray[np.int_]:
-        n_samples, n_nodes = x.shape
-
         best_score = np.inf
-        best_laplacians = np.empty((self.n_clusters, n_nodes, n_nodes))
-        best_labels = np.empty(n_samples, dtype=np.int_)
-        best_converged = None
+        best_params = {}
 
         for _n in range(self.n_init):
             self._single_fit(x)
 
             if self.score_ < best_score:
                 best_score = self.score_
-                best_laplacians = self.laplacians_
-                best_labels = self.labels_
-                best_converged = self.converged_
+                best_params = self.get_params()
 
         self.score_ = best_score
-        self.laplacians_ = best_laplacians
-        self.labels_ = best_labels
-        self.converged_ = best_converged
+        self.set_params(**best_params)
 
         return self.labels_
 
