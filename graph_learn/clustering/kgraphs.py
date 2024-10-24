@@ -211,7 +211,8 @@ class KGraphsV2(KGraphs):
             # Compute assignments
             # eisum.shape: (n_samples, n_clusters)
 
-            smoothness = self._centered_smoothness(x)
+            # FIXME: Why should I use smoothness instead of centerd one?
+            smoothness = self._smoothness(x)
             labels = np.argmin(smoothness, axis=1)
 
             self.score_ = np.sum(smoothness[np.arange(len(labels)), labels])
