@@ -61,7 +61,7 @@ def min_score(data, y_true, rng):
 
     y_pred = model.fit_predict(data)
 
-    # This is ~6.9e-4
+    # This is 0.07 if MEANS_VAR == 0
     return adjusted_mutual_info_score(y_true, y_pred)
 
 
@@ -77,7 +77,7 @@ def test_glmm(data, y_true, min_score, rng):
 
     y_pred = model.fit_predict(data)
 
-    # This is ~3.7e-3
+    # This is 0.61 if MEANS_VAR == 0
     assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
 
 
@@ -93,7 +93,7 @@ def test_kgraphs(data, y_true, min_score, rng):
 
     y_pred = model.fit_predict(data)
 
-    # This is ~5.1e-3
+    # This is 0.11 if MEANS_VAR == 0
     assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
 
 
@@ -109,7 +109,7 @@ def test_kgraphsv2(data, y_true, min_score, rng):
 
     y_pred = model.fit_predict(data)
 
-    # This is ~1.2e-2
+    # This is 0.38 if MEANS_VAR == 0
     assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
 
 
