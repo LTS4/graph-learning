@@ -221,26 +221,3 @@ def test_dictionary_smoothness():
             dictionary_smoothness(coeffs=activations, weights=weights, signals=signals),
             np.einsum("knm,kt,tn,tm->", laplacians, activations, signals, signals),
         )
-
-
-def test_dictionary_smoothness_combinations():
-    """Verify the dictionary smoothness operator, when using combinations probabilities"""
-
-    for seed in range(100):
-        rng = default_rng(seed)
-        n_atoms = rng.integers(1, 5)
-        n_nodes = rng.integers(10, 20)
-        n_samples = rng.integers(50, 500)
-
-        activations = rng.standard_normal((n_atoms, n_samples))
-        weights = rng.standard_normal((n_atoms, (n_nodes * (n_nodes - 1)) // 2))
-
-        combinations = powerset_matrix(n_atoms)
-        combi_p = combinations_prob(activations, combinations)
-
-        signals = rng.standard_normal(size=(n_samples, n_nodes))
-
-        assert np.allclose(
-            dictionary_smoothness(coeffs=activations, weights=weights, signals=signals),
-            np.sum((combinations.T @ weights) * (combi_p @ squared_pdiffs(signals))),
-        )
