@@ -226,6 +226,7 @@ class GLMM(BaseMixture):
         # shape: n_components
         # log_weights = np.log(self.weights_)
 
+        # FIXME: This could be vectorized
         for k in range(self.n_components):
             # Compute pdf
 
