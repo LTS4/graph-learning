@@ -40,11 +40,8 @@ def sample_er_laplacian(
     """
     rng = default_rng(seed)
 
-    if n_graphs == 1:
-        w_size = (n_nodes**2 - n_nodes) // 2
-    else:
-        w_size = (n_graphs, (n_nodes**2 - n_nodes) // 2)
+    w_size = (n_graphs, (n_nodes**2 - n_nodes) // 2)
 
     return laplacian_squareform_vec(
         (rng.uniform(size=w_size) < edge_p) * rng.uniform(edge_w_min, edge_w_max, size=w_size)
-    )
+    ).squeeze()
