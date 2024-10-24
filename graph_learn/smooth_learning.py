@@ -131,21 +131,9 @@ def gsp_learn_graph_log_degrees(
 
     sum_op, sum_op_t = sum_squareform(int(np.round((1 + np.sqrt(1 + 8 * n_edges)) / 2)))
 
-    # distances shall be vectorform of pairwise distances
-    # if (n_dim := len(distances.shape)) == 2:
-    #     sum_op, sum_op_t = sum_squareform(distances.shape[0])
-    #     distances = squareform(distances)
-    # elif n_dim == 1:
-    #     sum_op, sum_op_t = sum_squareform(
-    #
-    #     )  # TODO: check
-    # else:
-    #     raise ValueError(f"Distances must be square matrix or vector, got {n_dim} dimensions")
-
     step_size /= 2 * beta + np.sqrt(
         2 * (sum_op.shape[0] - 1)  # This approximate sparse.linalg.norm(sum_op, ord=2)
     )
-    # epsilon = 0
 
     # Variable and dual
     if edge_init is not None:
