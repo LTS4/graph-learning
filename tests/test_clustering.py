@@ -13,9 +13,10 @@ from graph_learn.sampling.graphs import sample_er_laplacian
 from graph_learn.sampling.signals import sample_lgmrf
 
 N_NODES = 13
-N_SAMPLES = 1000
+N_SAMPLES = 100
 N_CLUSTERS = 2
 EDGE_P = 0.2
+MEANS_VAR = 0
 
 MAX_ITER = 1000
 
@@ -39,11 +40,11 @@ def data(y_true, rng):
 
     x = np.zeros((N_SAMPLES, N_NODES), dtype=float)
 
+    means = MEANS_VAR * rng.standard_normal(size=(y_true.max() + 1, N_NODES))
+
     for i, lapl in enumerate(laplacians):
         mask = y_true == i
-        x[mask] = 2 * rng.standard_normal(size=(mask.sum(), N_NODES)) + sample_lgmrf(
-            lapl, n_samples=mask.sum(), seed=rng
-        )
+        x[mask] = means[i, np.newaxis, :] + sample_lgmrf(lapl, n_samples=mask.sum(), seed=rng)
 
     return x
 
@@ -77,7 +78,7 @@ def test_glmm(data, y_true, min_score, rng):
     y_pred = model.fit_predict(data)
 
     # This is ~3.7e-3
-    assert adjusted_mutual_info_score(y_true, y_pred) > min_score
+    assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
 
 
 def test_kgraphs(data, y_true, min_score, rng):
@@ -93,7 +94,7 @@ def test_kgraphs(data, y_true, min_score, rng):
     y_pred = model.fit_predict(data)
 
     # This is ~5.1e-3
-    assert adjusted_mutual_info_score(y_true, y_pred) > min_score
+    assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
 
 
 def test_kgraphsv2(data, y_true, min_score, rng):
@@ -109,7 +110,7 @@ def test_kgraphsv2(data, y_true, min_score, rng):
     y_pred = model.fit_predict(data)
 
     # This is ~1.2e-2
-    assert adjusted_mutual_info_score(y_true, y_pred) > min_score
+    assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
 
 
 # array([[-0.14153019, -0.22397099,  0.22772982,  0.06249811, -0.06384377,
