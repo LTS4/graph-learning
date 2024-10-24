@@ -17,7 +17,7 @@ class WindowLogModel(BaseEstimator):
         self,
         window_size: int = 10,
         *,
-        avg_degree: float = None,
+        avg_degree: int = None,
         edge_init: Optional[NDArray[np.float64]] = None,
         maxit: int = 1000,
         tol: float = 1e-5,

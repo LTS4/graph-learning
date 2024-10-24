@@ -21,7 +21,7 @@ def _estimate_gauss_laplacian_parameters(
     delta: float,
     *,
     theta: float | NDArray[np.float64] | None = None,
-    avg_degree: float | None = None,
+    avg_degree: int | None = None,
     laplacians: NDArray[np.float64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Estimate the parameters of Gaussian-Laplacian Mixture model, given the associations.
@@ -122,7 +122,7 @@ class GLMM(BaseMixture):
     def __init__(
         self,
         n_components=1,
-        avg_degree: float = 2,
+        avg_degree: int = 2,
         *,
         tol=1e-3,
         reg_covar=1e-6,

@@ -44,7 +44,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
     def __init__(
         self,
         n_clusters=1,
-        avg_degree: float = 0.5,
+        avg_degree: int = 2,
         *,
         max_iter=100,
         n_init=1,
@@ -155,7 +155,7 @@ class KGraphsV2(KGraphs):
     def __init__(
         self,
         n_clusters=1,
-        avg_degree: float = 0.5,
+        avg_degree: int = 2,
         *,
         max_iter=100,
         n_init=1,

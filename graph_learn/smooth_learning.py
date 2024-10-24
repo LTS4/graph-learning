@@ -1,4 +1,5 @@
 """Module for learning graphs from smooth signals"""
+
 from typing import Optional, Tuple
 
 import numpy as np
@@ -233,7 +234,7 @@ class LogModel(BaseEstimator):
 
     def __init__(
         self,
-        avg_degree: float = None,
+        avg_degree: int = None,
         edge_init: Optional[NDArray[np.float64]] = None,
         maxit: int = 1000,
         tol: float = 1e-5,
