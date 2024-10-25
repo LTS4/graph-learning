@@ -188,6 +188,8 @@ def get_theta(
         sq_pdists (NDArray[np.float64]): Squared pairwise distances of the data.
         avg_degree (int | dict[tuple[int, int], int]): Desired average degree. If a
             dictionary is passed, it should map block pairs to average degrees.
+            NOTE: Due to the standard parameterization not allowing for self-edges, off diagonal
+            blocks might have a lower avg_degree than asked.
         blocks (NDArray[np.int64], optional): Vector of block assignments for each node.
             Defaults to None.
 
@@ -198,21 +200,19 @@ def get_theta(
     """
     if blocks is None:
         sorted_dists = np.sort(sq_pdists, 1)
-        partial_sum = sorted_dists[:, 1:avg_degree].sum(1)
+        partial_sum = sorted_dists[:, :avg_degree].sum(1)
 
-        # NOTE: we use avg_degree -1 instead of avg_degree because the first term in
-        # the distance is always 0, and it seems to give result closer to the expected
         theta_min = np.mean(
             (
-                (avg_degree - 1) * sorted_dists[:, avg_degree + 1] ** 2
-                - partial_sum * sorted_dists[:, avg_degree + 1]
+                avg_degree * sorted_dists[:, avg_degree] ** 2
+                - partial_sum * sorted_dists[:, avg_degree]
             )
             ** (-0.5)
         )
         theta_max = np.mean(
             (
-                (avg_degree - 1) * sorted_dists[:, avg_degree] ** 2
-                - partial_sum * sorted_dists[:, avg_degree]
+                avg_degree * sorted_dists[:, avg_degree - 1] ** 2
+                - partial_sum * sorted_dists[:, avg_degree - 1]
             )
             ** (-0.5)
         )
@@ -229,7 +229,6 @@ def get_theta(
             else:
                 block_degree = avg_degree
 
-            # TODO: allow for different avg degrees in each block
             theta = get_theta(sq_pdists[slice1, slice2], avg_degree=block_degree)
             thetas[slice1, slice2] = thetas[slice2.T, slice1.T] = theta
 
