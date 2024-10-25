@@ -21,7 +21,8 @@ def _estimate_gauss_laplacian_parameters(
     delta: float,
     *,
     theta: float | NDArray[np.float64] | None = None,
-    avg_degree: int | None = None,
+    avg_degree: Optional[int | dict[tuple[int, int], int]] = None,
+    blocks: NDArray[np.int64] = None,
     laplacians: NDArray[np.float64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Estimate the parameters of Gaussian-Laplacian Mixture model, given the associations.
@@ -32,8 +33,9 @@ def _estimate_gauss_laplacian_parameters(
         delta (float): Scale parameters of learned graphs
         theta (float | NDArray[np.float64] | None, optional): Scale parameter of signals, or array
             of them. Defaults to None. Incompatible with avg_degree.
-        avg_degree (float | None, optional): Expected average degree of the graphs. Defaults to
+        avg_degree (int | dict, optional): Expected average degree of the graphs. Defaults to
             None. Incompatible with theta, as the latter is estimated with the :method:`get_theta`.
+        blocks (NDArray[np.int64], optional): Node assignments to blocks. Defaults to None.
         laplacians (NDArray[np.float64] | None, optional): Priors on the Laplacians, or previous
             estimates. Defaults to None.
 
@@ -67,7 +69,7 @@ def _estimate_gauss_laplacian_parameters(
     # Theta should be in the order of np.mean(sq_dist)
     if avg_degree is not None:
         # Get Theta returns inversed thetas
-        theta_inv = [[get_theta(sqd, avg_degree)] for sqd in sq_dist]
+        theta_inv = [[get_theta(sqd, avg_degree, blocks=blocks)] for sqd in sq_dist]
     else:
         theta_inv = 1 / theta
 
@@ -122,7 +124,7 @@ class GLMM(BaseMixture):
     def __init__(
         self,
         n_components=1,
-        avg_degree: int = 2,
+        avg_degree: int | dict[tuple[int, int], int] = 2,
         *,
         tol=1e-3,
         reg_covar=1e-6,
@@ -133,6 +135,7 @@ class GLMM(BaseMixture):
         theta: NDArray[np.float64] = None,
         delta: float = 2,
         laplacian_init: Optional[float | str] = None,
+        blocks: NDArray[np.int64] = None,
         random_state=None,
         warm_start=False,
         verbose=0,
@@ -155,6 +158,7 @@ class GLMM(BaseMixture):
         self.theta = theta
         self.avg_degree = avg_degree
         self.delta = delta
+        self.blocks = blocks
 
         self.laplacian_init = laplacian_init
 
@@ -171,7 +175,12 @@ class GLMM(BaseMixture):
         _n_samples, self.n_nodes_ = x.shape
 
         self.weights_, self.means_, laplacians = _estimate_gauss_laplacian_parameters(
-            x, resp, self.delta, theta=self.theta, avg_degree=self.avg_degree
+            x,
+            resp,
+            self.delta,
+            theta=self.theta,
+            avg_degree=self.avg_degree,
+            blocks=self.blocks,
         )
 
         if self.laplacian_init is None:
@@ -198,7 +207,12 @@ class GLMM(BaseMixture):
             self.means_,
             self.laplacians_,
         ) = _estimate_gauss_laplacian_parameters(
-            x, np.exp(log_resp), self.delta, theta=self.theta, avg_degree=self.avg_degree
+            x,
+            np.exp(log_resp),
+            self.delta,
+            theta=self.theta,
+            avg_degree=self.avg_degree,
+            blocks=self.blocks,
         )
         self.weights_ /= self.weights_.sum()
 
