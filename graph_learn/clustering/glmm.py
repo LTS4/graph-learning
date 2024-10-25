@@ -69,7 +69,9 @@ def _estimate_gauss_laplacian_parameters(
     # Theta should be in the order of np.mean(sq_dist)
     if avg_degree is not None:
         # Get Theta returns inversed thetas
-        theta_inv = [[get_theta(sqd, avg_degree, blocks=blocks)] for sqd in sq_dist]
+        theta_inv = np.array([get_theta(sqd, avg_degree, blocks=blocks) for sqd in sq_dist])
+        if len(theta_inv.shape) < 2:
+            theta_inv = theta_inv[:, np.newaxis]
     else:
         theta_inv = 1 / theta
 

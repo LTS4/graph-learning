@@ -12,9 +12,9 @@ from graph_learn.clustering import GLMM, KGraphs, KGraphsV2
 from graph_learn.sampling.graphs import sample_er_laplacian
 from graph_learn.sampling.signals import sample_lgmrf
 
-N_NODES = 13
+N_NODES = 25
 N_SAMPLES = 100
-N_CLUSTERS = 2
+N_CLUSTERS = 3
 EDGE_P = 0.2
 MEANS_VAR = 0
 
@@ -73,6 +73,26 @@ def test_glmm(data, y_true, min_score, rng):
         n_init=5,
         max_iter=MAX_ITER,
         random_state=rng.integers(10**6),
+    )
+
+    y_pred = model.fit_predict(data)
+
+    # This is 0.61 if MEANS_VAR == 0
+    assert adjusted_mutual_info_score(y_true, y_pred) >= min_score
+
+
+def test_glmm_blocks(data, y_true, min_score, rng):
+    """Test GLMM clustering"""
+    blocks = np.array(10 * [0] + 8 * [1] + 7 * [2])
+    avg_degrees = {(0, 0): 6, (0, 1): 3, (0, 2): 3, (1, 1): 4, (1, 2): 2, (2, 2): 3}
+
+    model = GLMM(
+        n_components=N_CLUSTERS,
+        avg_degree=avg_degrees,
+        n_init=5,
+        max_iter=MAX_ITER,
+        random_state=rng.integers(10**6),
+        blocks=blocks,
     )
 
     y_pred = model.fit_predict(data)

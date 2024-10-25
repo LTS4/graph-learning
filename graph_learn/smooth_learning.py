@@ -220,7 +220,7 @@ def get_theta(
     else:
         thetas = np.zeros(2 * (len(blocks),))
 
-        for pair in combinations_with_replacement(np.unique(blocks), 2):
+        for pair in combinations_with_replacement(np.unique(blocks).tolist(), 2):
             slice1 = np.where(blocks == pair[0])[0][:, np.newaxis]
             slice2 = np.where(blocks == pair[1])[0][np.newaxis, :]
 
