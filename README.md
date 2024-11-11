@@ -57,3 +57,7 @@ Part of the code is ported to Python from the Matlab implementation from https:/
 #### Parametric Dictionary Learning (GraphDictSpectral)
 
 > D. Thanou, D. I. Shuman, and P. Frossard, “Parametric dictionary learning for graph signals,” in 2013 IEEE Global Conference on Signal and Information Processing, Dec. 2013, pp. 487–490. https://doi.org/10.1109/GlobalSIP.2013.6736921.
+
+#### Graph Dictionary Signal Model (GraphDictLog, GraphDictBase)
+
+> W. Cappelletti and P. Frossard, “Graph-Dictionary Signal Model for Sparse Representations of Multivariate Data,” Nov. 08, 2024, [arXiv:2411.05729](https://arXiv.org/abs/2411.05729)
