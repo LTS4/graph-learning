@@ -11,7 +11,7 @@ def init_labels(
     n_clusters: int,
     init_params: str,
     random_state: RandomState,
-) -> NDArray[np.int_]:
+) -> NDArray[np.int64]:
     """Get initial estimate for cluster assignments
 
     Args:
@@ -27,13 +27,13 @@ def init_labels(
         ValueError: If 'init_params' is not supported
 
     Returns:
-        NDArray[np.int_]: Vector of cluster assignments
+        NDArray[np.int64]: Vector of cluster assignments
     """
     n_samples, _n_nodes = x.shape
 
     match init_params:
         case "random":
-            labels = np.zeros(n_samples, dtype=np.int_)
+            labels = np.zeros(n_samples, dtype=np.int64)
             n_per_class = n_samples // n_clusters
             for i in range(n_clusters):
                 labels[i * n_per_class : (i + 1) * n_per_class] = i

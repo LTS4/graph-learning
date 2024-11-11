@@ -12,11 +12,10 @@ from graph_learn.operators import (
     laplacian_squareform_adj,
     laplacian_squareform_adj_vec,
     laplacian_squareform_vec,
-    op_activations_norm,
-    op_adj_activations,
+    op_adj_coefficients,
     op_adj_weights,
+    op_coefficients_norm,
     op_weights_norm,
-    squared_pdiffs,
 )
 
 ################################################################################
@@ -81,7 +80,7 @@ def test_op_adj_weights():
         n_nodes = rng.integers(20, 100)
         n_samples = rng.integers(100, 1000)
 
-        activations = rng.standard_normal((n_components, n_samples))
+        coefficients = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
         # dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
         dual = laplacian_squareform_vec(
@@ -89,26 +88,30 @@ def test_op_adj_weights():
         )
 
         assert np.allclose(
-            np.sum(weights * op_adj_weights(activations, dual)),
-            np.sum(dual * np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights))),
+            np.sum(weights * op_adj_weights(coefficients, dual)),
+            np.sum(
+                dual * np.einsum("kt,knm->tnm", coefficients, laplacian_squareform_vec(weights))
+            ),
         )
 
 
-def test_op_adj_activations():
-    """Verify the operator adjoint of the activations"""
+def test_op_adj_coefficients():
+    """Verify the operator adjoint of the coefficients"""
     for seed in range(1000):
         rng = default_rng(seed)
         n_components = rng.integers(1, 10)
         n_nodes = rng.integers(20, 100)
         n_samples = rng.integers(100, 1000)
 
-        activations = rng.standard_normal((n_components, n_samples))
+        coefficients = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
         dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
 
         assert np.allclose(
-            np.sum(activations * op_adj_activations(weights, dual)),
-            np.sum(dual * np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights))),
+            np.sum(coefficients * op_adj_coefficients(weights, dual)),
+            np.sum(
+                dual * np.einsum("kt,knm->tnm", coefficients, laplacian_squareform_vec(weights))
+            ),
         )
 
 
@@ -120,7 +123,7 @@ def test_full_adjoint():
         n_nodes = rng.integers(20, 100)
         n_samples = rng.integers(100, 1000)
 
-        activations = rng.standard_normal((n_components, n_samples))
+        coefficients = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
         # dual = rng.standard_normal((n_samples, n_nodes, n_nodes))
         dual = laplacian_squareform_vec(
@@ -128,11 +131,11 @@ def test_full_adjoint():
         )
 
         prod1 = np.sum(
-            dual * np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights))
+            dual * np.einsum("kt,knm->tnm", coefficients, laplacian_squareform_vec(weights))
         )
         prod2 = 0.5 * (
-            np.sum(weights * op_adj_weights(activations, dual))
-            + np.sum(activations * op_adj_activations(weights, dual))
+            np.sum(weights * op_adj_weights(coefficients, dual))
+            + np.sum(coefficients * op_adj_coefficients(weights, dual))
         )
 
         assert np.allclose(prod1, prod2)
@@ -154,16 +157,16 @@ def test_operator_norm_weights(n_components, n_nodes, n_samples):
 
     rng = default_rng(n_components * n_nodes * n_samples)
 
-    activations = rng.standard_normal((n_components, n_samples))
+    coefficients = rng.standard_normal((n_components, n_samples))
     weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
 
-    estimate = op_weights_norm(activations=activations, n_nodes=n_nodes) ** 2
+    estimate = op_weights_norm(coefficients=coefficients, n_nodes=n_nodes) ** 2
 
     for _ in range(n_samples):
         weights = weights / np.linalg.norm(weights)
         _weights = op_adj_weights(
-            activations,
-            np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights)),
+            coefficients,
+            np.einsum("kt,knm->tnm", coefficients, laplacian_squareform_vec(weights)),
         )
 
         alpha = np.mean(_weights / weights)
@@ -175,26 +178,26 @@ def test_operator_norm_weights(n_components, n_nodes, n_samples):
 @pytest.mark.parametrize(
     "n_components, n_nodes, n_samples", list(product(SPACE_COMPONENTS, SPACE_NODES, SPACE_SAMPLES))
 )
-def test_operator_norm_activations(n_components, n_nodes, n_samples):
-    """Verify the operator norm, wrt activations"""
+def test_operator_norm_coefficients(n_components, n_nodes, n_samples):
+    """Verify the operator norm, wrt coefficients"""
 
     rng = default_rng(n_components * n_nodes * n_samples)
 
-    activations = rng.standard_normal((n_components, n_samples))
+    coefficients = rng.standard_normal((n_components, n_samples))
     weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
 
     lapl = laplacian_squareform_vec(weights)
-    estimate = op_activations_norm(lapl) ** 2
+    estimate = op_coefficients_norm(lapl) ** 2
 
     for _ in range(200):
-        activations = activations / np.linalg.norm(activations)
-        _activations = op_adj_activations(
+        coefficients = coefficients / np.linalg.norm(coefficients)
+        _coefficients = op_adj_coefficients(
             weights,
-            np.einsum("kt,knm->tnm", activations, laplacian_squareform_vec(weights)),
+            np.einsum("kt,knm->tnm", coefficients, laplacian_squareform_vec(weights)),
         )
 
-        alpha = np.mean(_activations / activations)
-        activations = _activations
+        alpha = np.mean(_coefficients / coefficients)
+        coefficients = _coefficients
 
     assert np.isclose(estimate, alpha, rtol=1e-2)
 
@@ -211,13 +214,13 @@ def test_dictionary_smoothness():
         n_nodes = rng.integers(10, 20)
         n_samples = rng.integers(50, 500)
 
-        activations = rng.standard_normal((n_components, n_samples))
+        coefficients = rng.standard_normal((n_components, n_samples))
         weights = rng.standard_normal((n_components, (n_nodes * (n_nodes - 1)) // 2))
 
         signals = rng.standard_normal(size=(n_samples, n_nodes))
         laplacians = laplacian_squareform_vec(weights)
 
         assert np.allclose(
-            dictionary_smoothness(coeffs=activations, weights=weights, signals=signals),
-            np.einsum("knm,kt,tn,tm->", laplacians, activations, signals, signals),
+            dictionary_smoothness(coeffs=coefficients, weights=weights, signals=signals),
+            np.einsum("knm,kt,tn,tm->", laplacians, coefficients, signals, signals),
         )

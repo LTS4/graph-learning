@@ -27,9 +27,10 @@ readme = "README.md"
 license = { text = "BSD-3-Clause" }
 requires-python = ">=3.10"
 dependencies = [
-    "numpy>=1.2.1",
+    "numpy<=2.1",
     "scikit-learn",
     "tqdm",
+    "pandas",
 ]
 
 classifiers = [
@@ -76,13 +77,14 @@ enabled = true
     generated-members = ['numpy.*', 'scipy.*', 'sklearn.*']
 
     [tool.pylint.similarities]
-    min-similarity-lines = 3
+    min-similarity-lines = 4
     ignore-imports = true
     ignore-signatures = true
 
     [tool.pylint.design]
-    max-attributes = 10
-    max-args = 8
+    max-attributes = 30
+    max-locals = 25
+    max-args = 30
 
     [tool.pylint.message_control]
     disable = [

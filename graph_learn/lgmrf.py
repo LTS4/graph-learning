@@ -91,7 +91,7 @@ class LGMRF(BaseEstimator):
         laplacian_set (str, optional): Which kind of Laplacian is to be
             learned. Defaults to 'generalized'. Options are:
                 - 'generalized', or 'g': Generalized Laplacian,
-        adj_mask (NDArray[np.int_], optional): Prior on graph connectivity.
+        adj_mask (NDArray[np.int64], optional): Prior on graph connectivity.
             Defaults to a fully connected network.
 
     Parameters:
@@ -115,7 +115,7 @@ class LGMRF(BaseEstimator):
         qp_tol=1e-6,
         regularization_type=1,
         laplacian_set: str = "generalized",
-        adj_mask: NDArray[np.int_] = None,
+        adj_mask: NDArray[np.int64] = None,
     ) -> None:
         self.norm_par = norm_par
         self.prob_tol = prob_tol

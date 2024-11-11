@@ -1,4 +1,4 @@
-"""Operators for Laplacians and activations manipulation"""
+"""Operators for Laplacians and coefficients manipulation"""
 
 import numpy as np
 from numpy.linalg import eigh
@@ -180,42 +180,42 @@ def op_adj_dual(dualv: NDArray) -> NDArray:
     )
 
 
-def op_adj_weights(activations: NDArray, dualv: NDArray) -> NDArray:
+def op_adj_weights(coefficients: NDArray, dualv: NDArray) -> NDArray:
     """Compute the adjoint of the bilinear inst-Laplacian operator wrt weights
 
     Args:
-        activations (NDArray): Array of activations of shape (n_components, n_samples)
+        coefficients (NDArray): Array of coefficients of shape (n_components, n_samples)
         dualv (NDArray): Instantaneous Laplacians, of shape (n_samples, n_nodes, n_nodes)
 
     Returns:
         NDArray: Dual weights of shape (n_components, n_edges)
     """
-    return activations @ op_adj_dual(dualv)
+    return coefficients @ op_adj_dual(dualv)
 
 
-def op_weights_norm(activations: NDArray, n_nodes: int) -> float:
+def op_weights_norm(coefficients: NDArray, n_nodes: int) -> float:
     """Compute the norm of the inst-Laplacian operator restricted to weights"""
-    if 1 in activations.shape:
-        return np.sqrt(2 * n_nodes * np.sum(activations**2))
-    return np.sqrt(2 * n_nodes) * svds(activations, k=1, return_singular_vectors=False)[0]
+    if 1 in coefficients.shape:
+        return np.sqrt(2 * n_nodes * np.sum(coefficients**2))
+    return np.sqrt(2 * n_nodes) * svds(coefficients, k=1, return_singular_vectors=False)[0]
 
 
-def op_adj_activations(weights: NDArray, dualv: NDArray) -> NDArray:
-    """Compute the adjoint of the bilinear inst-Laplacian operator wrt activations
+def op_adj_coefficients(weights: NDArray, dualv: NDArray) -> NDArray:
+    """Compute the adjoint of the bilinear inst-Laplacian operator wrt coefficients
 
     Args:
         weights (NDArray): Array of weights of shape (n_components, n_edges)
         dualv (NDArray): Instantaneous Laplacians, of shape (n_samples, n_nodes, n_nodes)
 
     Returns:
-        NDArray: Adjoint activations of shape (n_components, n_samples)
+        NDArray: Adjoint coefficients of shape (n_components, n_samples)
     """
     # return np.tensordot(laplacian_squareform_vec(weights), dualv, axes=((-2, -1), (-2, -1)))
     return weights @ op_adj_dual(dualv).T
 
 
-def op_activations_norm(lapl: NDArray) -> float:
-    """Compute the norm of the inst-Laplacian operator restricted to activations"""
+def op_coefficients_norm(lapl: NDArray) -> float:
+    """Compute the norm of the inst-Laplacian operator restricted to coefficients"""
     if lapl.shape[0] == 1:
         return np.sqrt(np.sum(lapl**2))
     return svds(lapl.reshape(lapl.shape[0], -1), k=1, return_singular_vectors=False)[0]

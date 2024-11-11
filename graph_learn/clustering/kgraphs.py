@@ -30,7 +30,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
         random_state (Optional[RandomState], optional): _description_. Defaults to None.
 
     Parameters:
-        labels_ (NDArray[np.int_]): Cluster assignments
+        labels_ (NDArray[np.int64]): Cluster assignments
         laplacians_ (NDArray[np.float64]): Cluster laplacians
         converged_ (bool): Wheter assignment converged
         score_ (float): Total smoothness
@@ -63,7 +63,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
         self.avg_degree = avg_degree
         self.random_state = random_state
 
-        self.labels_: NDArray[np.int_]
+        self.labels_: NDArray[np.int64]
         self.laplacians_: NDArray[np.float64]
         self.converged_: bool
         self.score_: float
@@ -120,7 +120,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
 
             self.labels_ = labels
 
-    def fit_predict(self, x: NDArray[np.float64], _y=None) -> NDArray[np.int_]:
+    def fit_predict(self, x: NDArray[np.float64], _y=None) -> NDArray[np.int64]:
         best_score = np.inf
         best_params = {}
 
@@ -140,7 +140,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
         self.fit_predict(x)
         return self
 
-    def predict(self, x: NDArray[np.float64]) -> NDArray[np.int_]:
+    def predict(self, x: NDArray[np.float64]) -> NDArray[np.int64]:
         """Compute labels"""
         return np.argmin(self._smoothness(x), axis=1)
 
