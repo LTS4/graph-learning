@@ -55,7 +55,8 @@ def _estimate_gauss_laplacian_parameters(
     if laplacians is None:
         edge_init = None
     else:
-        edge_init = -square_to_vec(laplacians)
+        # Must transpose as gsp_learn_graph_log_degrees expects edge weights on first axis
+        edge_init = -square_to_vec(laplacians).T
 
     weights: NDArray[np.float64] = np.sum(resp, axis=0)  # shape: n_components
 
@@ -170,29 +171,33 @@ class GLMM(BaseMixture):
         self.means_: NDArray[np.float64]
         self.laplacians_: NDArray[np.float64]
 
+        self._propagate_laplacians = False
+
     def _check_parameters(self, X):
         pass
 
     def _initialize(self, x, resp):
         _n_samples, self.n_nodes_ = x.shape
 
-        self.weights_, self.means_, laplacians = _estimate_gauss_laplacian_parameters(
-            x,
-            resp,
-            self.delta,
-            theta=self.theta,
-            avg_degree=self.avg_degree,
-            blocks=self.blocks,
-        )
-
         if self.laplacian_init is None:
-            self.laplacians_ = laplacians
+            self.laplacians_ = None
+
+        elif isinstance(self.laplacian_init, np.ndarray):
+            if self.laplacian_init.shape != (self.n_components, self.n_nodes_, self.n_nodes_):
+                raise ValueError("Laplacians must have shape (n_components, n_nodes, n_nodes)")
+
+            self._propagate_laplacians = True
+            self.laplacians_ = self.laplacian_init
+
+            raise NotImplementedError("Laplacian order should be related to resp to make sense")
+
         elif isinstance(spread := self.laplacian_init, float):
             self.laplacians_ = np.tile(
                 spread * np.eye(self.n_nodes_)
                 - spread / self.n_nodes_ * np.ones((self.n_nodes_, self.n_nodes_)),
                 (self.n_components, 1, 1),
             )
+
         elif self.laplacian_init == "random":
             self.laplacians_ = np.stack(
                 [
@@ -200,8 +205,19 @@ class GLMM(BaseMixture):
                     for _ in range(self.n_components)
                 ]
             )
+
         else:
             raise ValueError("Invalid Laplacian init")
+
+        self.weights_, self.means_, self.laplacians_ = _estimate_gauss_laplacian_parameters(
+            x,
+            resp,
+            self.delta,
+            theta=self.theta,
+            avg_degree=self.avg_degree,
+            blocks=self.blocks,
+            laplacians=self.laplacians_ if self._propagate_laplacians else None,
+        )
 
     def _m_step(self, x: NDArray[np.float64], log_resp: NDArray[np.float64]) -> None:
         (
@@ -215,6 +231,7 @@ class GLMM(BaseMixture):
             theta=self.theta,
             avg_degree=self.avg_degree,
             blocks=self.blocks,
+            laplacians=self.laplacians_ if self._propagate_laplacians else None,
         )
         self.weights_ /= self.weights_.sum()
 
