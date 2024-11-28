@@ -1,5 +1,6 @@
 """Module for learning graphs from smooth signals"""
 
+from itertools import combinations_with_replacement
 from typing import Optional, Tuple
 
 import numpy as np
@@ -131,21 +132,9 @@ def gsp_learn_graph_log_degrees(
 
     sum_op, sum_op_t = sum_squareform(int(np.round((1 + np.sqrt(1 + 8 * n_edges)) / 2)))
 
-    # distances shall be vectorform of pairwise distances
-    # if (n_dim := len(distances.shape)) == 2:
-    #     sum_op, sum_op_t = sum_squareform(distances.shape[0])
-    #     distances = squareform(distances)
-    # elif n_dim == 1:
-    #     sum_op, sum_op_t = sum_squareform(
-    #
-    #     )  # TODO: check
-    # else:
-    #     raise ValueError(f"Distances must be square matrix or vector, got {n_dim} dimensions")
-
     step_size /= 2 * beta + np.sqrt(
         2 * (sum_op.shape[0] - 1)  # This approximate sparse.linalg.norm(sum_op, ord=2)
     )
-    # epsilon = 0
 
     # Variable and dual
     if edge_init is not None:
@@ -185,32 +174,65 @@ def gsp_learn_graph_log_degrees(
         return edge_w.T
 
 
-def get_theta(sq_pdists: NDArray[np.float64], avg_degree: int) -> float:
-    """Compute a theta parameter to obtain desired average degree from  graph learning LogModel.
+def get_theta(
+    sq_pdists: NDArray[np.float64],
+    avg_degree: int | dict[tuple[int, int], int],
+    blocks: NDArray[np.int64] = None,
+) -> float | NDArray[np.float64]:
+    """Compute a theta parameter to obtain desired average degree for the graph learning LogModel.
 
     The parametrization is from V. Kalofolias and N. Perraudin, “Large Scale
     Graph Learning from Smooth Signals.” arXiv, May 01, 2019. doi: 10.48550/arXiv.1710.05654.
-    """
-    sorted_dists = np.sort(sq_pdists, 1)
-    partial_sum = sorted_dists[:, :avg_degree].sum(1)
 
-    # NOTE: we use avg_degree -1 instead of avg_degree because the first term in
-    # the distance is always 0
-    theta_min = np.mean(
-        (
-            (avg_degree - 1) * sorted_dists[:, avg_degree + 1] ** 2
-            - partial_sum * sorted_dists[:, avg_degree + 1]
+    Args:
+        sq_pdists (NDArray[np.float64]): Squared pairwise distances of the data.
+        avg_degree (int | dict[tuple[int, int], int]): Desired average degree. If a
+            dictionary is passed, it should map block pairs to average degrees.
+            NOTE: Due to the standard parameterization not allowing for self-edges, off diagonal
+            blocks might have a lower avg_degree than asked.
+        blocks (NDArray[np.int64], optional): Vector of block assignments for each node.
+            Defaults to None.
+
+    Returns:
+        float | NDArray[np.float64]: Theta parameter to rescale pairwise distances.
+            If blocks are provided, returns the vectorized upper triangular matrix of
+            theta parameters for each edge.
+    """
+    if blocks is None:
+        sorted_dists = np.sort(sq_pdists, 1)
+        partial_sum = sorted_dists[:, :avg_degree].sum(1)
+
+        theta_min = np.mean(
+            (
+                avg_degree * sorted_dists[:, avg_degree] ** 2
+                - partial_sum * sorted_dists[:, avg_degree]
+            )
+            ** (-0.5)
         )
-        ** (-0.5)
-    )
-    theta_max = np.mean(
-        (
-            (avg_degree - 1) * sorted_dists[:, avg_degree] ** 2
-            - partial_sum * sorted_dists[:, avg_degree]
+        theta_max = np.mean(
+            (
+                avg_degree * sorted_dists[:, avg_degree - 1] ** 2
+                - partial_sum * sorted_dists[:, avg_degree - 1]
+            )
+            ** (-0.5)
         )
-        ** (-0.5)
-    )
-    return np.sqrt(theta_min * theta_max).item()
+        return np.sqrt(theta_min * theta_max).item()
+    else:
+        thetas = np.zeros(2 * (len(blocks),))
+
+        for pair in combinations_with_replacement(np.unique(blocks).tolist(), 2):
+            slice1 = np.where(blocks == pair[0])[0][:, np.newaxis]
+            slice2 = np.where(blocks == pair[1])[0][np.newaxis, :]
+
+            if isinstance(avg_degree, dict):
+                block_degree = avg_degree[pair]
+            else:
+                block_degree = avg_degree
+
+            theta = get_theta(sq_pdists[slice1, slice2], avg_degree=block_degree)
+            thetas[slice1, slice2] = thetas[slice2.T, slice1.T] = theta
+
+        return squareform(thetas, checks=False)
 
 
 class LogModel(BaseEstimator):
@@ -234,7 +256,7 @@ class LogModel(BaseEstimator):
 
     def __init__(
         self,
-        avg_degree: float = None,
+        avg_degree: int = None,
         *,
         edge_init: Optional[NDArray[np.float64]] = None,
         maxit: int = 1000,

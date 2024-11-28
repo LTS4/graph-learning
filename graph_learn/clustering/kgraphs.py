@@ -11,7 +11,8 @@ from scipy.special import softmax
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_random_state
 
-from graph_learn.clustering.utils import init_labels
+from graph_learn.clustering.glmm import _estimate_gauss_laplacian_parameters
+from graph_learn.clustering.utils import init_labels, one_hot
 from graph_learn.operators import laplacian_squareform_vec
 from graph_learn.smooth_learning import get_theta, gsp_learn_graph_log_degrees
 
@@ -43,7 +44,7 @@ class KGraphs(BaseEstimator, ClusterMixin):
     def __init__(
         self,
         n_clusters=1,
-        avg_degree: float = 0.5,
+        avg_degree: int = 2,
         *,
         max_iter=100,
         n_init=1,
@@ -120,26 +121,18 @@ class KGraphs(BaseEstimator, ClusterMixin):
             self.labels_ = labels
 
     def fit_predict(self, x: NDArray[np.float64], _y=None) -> NDArray[np.int64]:
-        n_samples, n_nodes = x.shape
-
         best_score = np.inf
-        best_laplacians = np.empty((self.n_clusters, n_nodes, n_nodes))
-        best_labels = np.empty(n_samples, dtype=np.int64)
-        best_converged = None
+        best_params = {}
 
         for _n in range(self.n_init):
             self._single_fit(x)
 
             if self.score_ < best_score:
                 best_score = self.score_
-                best_laplacians = self.laplacians_
-                best_labels = self.labels_
-                best_converged = self.converged_
+                best_params = self.get_params()
 
         self.score_ = best_score
-        self.laplacians_ = best_laplacians
-        self.labels_ = best_labels
-        self.converged_ = best_converged
+        self.set_params(**best_params)
 
         return self.labels_
 
@@ -154,3 +147,87 @@ class KGraphs(BaseEstimator, ClusterMixin):
     def predict_proba(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
         "Return softmax of smoothness"
         return softmax(-self._smoothness(x), axis=1)
+
+
+class KGraphsV2(KGraphs):
+    """Extension of KGraphs to allow for centers estimation"""
+
+    def __init__(
+        self,
+        n_clusters=1,
+        avg_degree: int = 2,
+        *,
+        max_iter=100,
+        n_init=1,
+        init_params="kmeans",
+        delta: float = 1,
+        theta: Optional[float] = None,
+        random_state: RandomState | None = None,
+    ) -> None:
+        super().__init__(
+            n_clusters,
+            avg_degree,
+            max_iter=max_iter,
+            n_init=n_init,
+            init_params=init_params,
+            delta=delta,
+            random_state=random_state,
+        )
+
+        self.theta = theta
+
+        self.means_: NDArray[np.float64]  # shape: (n_clusters, n_nodes)
+
+    def _init_parameters(self, x: NDArray[np.float64]):
+        self.random_state = check_random_state(self.random_state)
+
+        self.labels_ = init_labels(
+            x,
+            self.n_clusters,
+            init_params=self.init_params,
+            random_state=self.random_state,
+        )
+
+        _, self.means_, self.laplacians_ = _estimate_gauss_laplacian_parameters(
+            x,
+            one_hot(self.labels_, self.n_clusters),
+            self.delta,
+            theta=self.theta,
+            avg_degree=self.avg_degree,
+        )
+
+        self.converged_ = False
+
+        self.score_ = np.inf
+
+    def _centered_smoothness(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
+        x = x[np.newaxis, ...] - self.means_[:, np.newaxis, :]
+        return np.einsum("kni,kij,knj->nk", x, self.laplacians_, x)
+
+    def _single_fit(self, x: NDArray[np.float64], _y=None) -> None:
+        self._init_parameters(x)
+
+        for _i in range(self.max_iter):
+            # Compute assignments
+            # eisum.shape: (n_samples, n_clusters)
+
+            # FIXME: Why should I use smoothness instead of centerd one?
+            smoothness = self._smoothness(x)
+            labels = np.argmin(smoothness, axis=1)
+
+            self.score_ = np.sum(smoothness[np.arange(len(labels)), labels])
+
+            # Compute means and Laplacians
+            _, self.means_, self.laplacians_ = _estimate_gauss_laplacian_parameters(
+                x,
+                one_hot(labels, self.n_clusters),
+                self.delta,
+                theta=self.theta,
+                avg_degree=self.avg_degree,
+            )
+
+            if np.allclose(labels, self.labels_):
+                self.converged_ = True
+                return
+
+            self.labels_ = labels

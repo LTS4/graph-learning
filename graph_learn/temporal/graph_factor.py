@@ -5,6 +5,7 @@ _yamadaTimeVaryingGraphLearning2020 : K. Yamada, Y. Tanaka, and A. Ortega,
     ArXiv, 2020.
 
 """
+
 from typing import Callable
 
 import numpy as np
@@ -184,6 +185,7 @@ class TGFA(BaseEstimator):
 
     def fit(self, x: NDArray[np.float64]):
         sq_pdiffs = self._initialize(x)
+
         if self.avg_degree is not None:
             sq_pdiffs *= [
                 [get_theta(squareform(sqpd), avg_degree=self.avg_degree)] for sqpd in sq_pdiffs
