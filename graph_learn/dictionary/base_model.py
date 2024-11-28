@@ -313,6 +313,10 @@ class GraphDictBase(ABC, BaseEstimator):
         n_samples, n_nodes = x.shape
         return np.zeros((n_samples // self.window_size, n_nodes, n_nodes))
 
+    def _squared_pdiffs(self, x: NDArray) -> NDArray:
+        """This function is provided to allow submodels to use other parameterization"""
+        return squared_pdiffs(x)
+
     def _initialize(self, x: NDArray) -> None:
         """Initialize the model
 
@@ -539,7 +543,7 @@ class GraphDictBase(ABC, BaseEstimator):
         """
         self._initialize(x)
 
-        sq_pdiffs = squared_pdiffs(x)  # shape: (n_samples, n_edges)
+        sq_pdiffs = self._squared_pdiffs(x)  # shape: (n_samples, n_edges)
 
         if callback is not None:
             callback(self, 0)
@@ -652,7 +656,7 @@ class GraphDictBase(ABC, BaseEstimator):
 
         # op_act_norm = op_coefficients_norm(laplacian_squareform_vec(self.weights_))
 
-        sq_pdiffs = squared_pdiffs(x)
+        sq_pdiffs = self._squared_pdiffs(x)
 
         for _ in range(self.max_iter):
             coefficients_u = np.repeat(
