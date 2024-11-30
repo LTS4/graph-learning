@@ -383,8 +383,10 @@ class GraphDictBase(ABC, BaseEstimator):
         step += self.l1_c * n_samples
 
         if self.log_c > 0:
-            # step -= self.log_c / coefficients.sum(axis=0, keepdims=True)
-            coefficients[:, coefficients.sum(0) < 1e-8] = self.log_c
+            # We use the logbarrier twice, to always have active atoms in time and in space
+            step -= self.log_c / coefficients.sum(axis=0, keepdims=True)
+            step -= self.log_c / coefficients.sum(axis=1, keepdims=True)
+            # coefficients[:, coefficients.sum(0) < 1e-8] = self.log_c
 
         if self.l1_diff_c > 0:
             step -= (
