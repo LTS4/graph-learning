@@ -202,21 +202,24 @@ def get_theta(
         sorted_dists = np.sort(sq_pdists, 1)
         partial_sum = sorted_dists[:, :avg_degree].sum(1)
 
+        # NOTE: we use avg_degree -1 instead of avg_degree because the first term in
+        # the distance is always 0
         theta_min = np.mean(
             (
-                avg_degree * sorted_dists[:, avg_degree] ** 2
-                - partial_sum * sorted_dists[:, avg_degree]
+                (avg_degree - 1) * sorted_dists[:, avg_degree + 1] ** 2
+                - partial_sum * sorted_dists[:, avg_degree + 1]
             )
             ** (-0.5)
         )
         theta_max = np.mean(
             (
-                avg_degree * sorted_dists[:, avg_degree - 1] ** 2
-                - partial_sum * sorted_dists[:, avg_degree - 1]
+                (avg_degree - 1) * sorted_dists[:, avg_degree] ** 2
+                - partial_sum * sorted_dists[:, avg_degree]
             )
             ** (-0.5)
         )
         return np.sqrt(theta_min * theta_max).item()
+
     else:
         thetas = np.zeros(2 * (len(blocks),))
 
