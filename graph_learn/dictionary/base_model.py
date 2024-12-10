@@ -669,7 +669,9 @@ class GraphDictBase(ABC, BaseEstimator):
 
         sq_pdiffs = self._squared_pdiffs(x)
 
-        for _ in range(self.max_iter):
+        last_changes = [1, 1, 1]
+
+        for i in range(self.max_iter):
             coefficients_u = np.repeat(
                 self._update_coefficients(
                     sq_pdiffs, coefficients[:, :: self.window_size], dual=dual
@@ -684,8 +686,17 @@ class GraphDictBase(ABC, BaseEstimator):
                 dual,
             )
 
-            if np.linalg.norm((coefficients_u - coefficients).ravel()) < self.tol:
-                return coefficients_u
+            rel_change = relative_error(coefficients.ravel(), coefficients_u.ravel())
+
+            last_changes.append(rel_change)
+            last_changes.pop(0)
+
+            if rel_change < self.tol or (
+                self.tol_plateau
+                and i > 100
+                and np.abs(last_changes[0] - last_changes[-1]) < self.tol_plateau
+            ):
+                break
 
             coefficients = coefficients_u
 
