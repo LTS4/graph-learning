@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from time import time
-from typing import Callable
+from typing import Callable, Optional
 from warnings import warn
 
 import numpy as np
@@ -109,6 +109,7 @@ class GraphDictBase(ABC, BaseEstimator):
         step_w: float = None,
         step_dual: float = None,
         tol: float = 1e-3,
+        tol_plateau: Optional[float] = None,
         reduce_step_on_plateau: bool = False,
         random_state: RandomState = None,
         init_strategy: str = "uniform",
@@ -137,6 +138,7 @@ class GraphDictBase(ABC, BaseEstimator):
         self.step_dual = step_dual or step
 
         self.tol = tol
+        self.tol_plateau = tol_plateau
         self.reduce_step_on_plateau = reduce_step_on_plateau
 
         if isinstance(random_state, RandomState):
@@ -555,7 +557,14 @@ class GraphDictBase(ABC, BaseEstimator):
             try:
                 self.history_.iloc[i] = a_rel_change, w_rel_change = self._fit_step(sq_pdiffs)
 
-                if (a_rel_change < self.tol) and (w_rel_change < self.tol):
+                if ((a_rel_change < self.tol) and (w_rel_change < self.tol)) or (
+                    self.tol_plateau
+                    and i > 100
+                    and np.all(
+                        np.abs((self.history_.values[i - 2] - self.history_.values[i]))
+                        < self.tol_plateau
+                    )
+                ):
                     self.converged_ = i
 
                 if (
