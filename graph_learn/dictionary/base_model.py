@@ -154,8 +154,6 @@ class GraphDictBase(ABC, BaseEstimator):
 
         self.early_stop_keyboard = early_stop_keyboard
 
-        self._sq_pdiffs: NDArray[np.float64]  # shape (n_atoms, n_edges )
-
         self.coefficients_: NDArray[np.float64]  # shape (n_atoms, n_samples)
         self.weights_: NDArray[np.float64]  # shape (n_atoms, n_edges )
         self.dual_: NDArray[np.float64]  # shape (n_samples, n_nodes, n_nodes)
